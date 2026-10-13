@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0f766e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Garage Manager</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--tx:#14202b;--mut:#64748b;--br:#e2e8f0;--pri:#0f766e;--onpri:#fff;--ok:#16a34a;--warn:#d97706;--bad:#dc2626;--c-carburante:#f59e0b;--c-fissa:#3b82f6;--c-ordinaria:#10b981;--c-straordinaria:#ef4444;--r:14px}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1218;--card:#141e27;--tx:#e6edf3;--mut:#8b9bab;--br:#24323f;--pri:#2dd4bf;--onpri:#04201d}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding-bottom:calc(76px + env(safe-area-inset-bottom))}
+.top{display:flex;align-items:baseline;justify-content:space-between;padding:calc(14px + env(safe-area-inset-top)) 16px 10px;max-width:760px;margin:0 auto}
+.top h1{margin:0;font-size:1.35rem}
+.ver{color:var(--mut);font-size:.75rem}
+main{max-width:760px;margin:0 auto;padding:0 16px 16px}
+h3{margin:0 0 6px;font-size:1.05rem}
+.card{background:var(--card);border:1px solid var(--br);border-radius:var(--r);padding:14px;margin:0 0 12px}
+.card.ok{border-color:var(--ok)}
+.mut{color:var(--mut)}.small{font-size:.85rem}.center{text-align:center}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.row.gap{justify-content:flex-start;flex-wrap:wrap;margin-top:8px}
+.row.end{justify-content:flex-end}
+.btn{appearance:none;border:0;background:var(--pri);color:var(--onpri);font:inherit;font-weight:600;padding:11px 16px;border-radius:12px;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--pri);border:1px solid var(--br)}
+.btn.sm{padding:7px 12px;font-size:.9rem}
+.btn.full{width:100%;margin-bottom:12px}
+.btn.danger{background:var(--bad);color:#fff}
+.lnk{background:none;border:0;color:var(--pri);font:inherit;font-size:.9rem;padding:4px 2px;cursor:pointer}
+.lnk.bad{color:var(--bad)}
+.bottom{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:space-around;background:var(--card);border-top:1px solid var(--br);padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:5}
+.bottom button{flex:1;max-width:140px;background:none;border:0;color:var(--mut);font:inherit;font-size:.72rem;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;cursor:pointer}
+.bottom button span{font-size:1.3rem;line-height:1}
+.bottom button.on{color:var(--pri);font-weight:700}
+select,input,textarea{width:100%;font:inherit;color:var(--tx);background:var(--bg);border:1px solid var(--br);border-radius:10px;padding:10px}
+.vbar{margin-bottom:12px}
+.seg{display:flex;gap:6px;margin-bottom:12px}
+.seg button{flex:1;padding:9px 6px;border-radius:10px;border:1px solid var(--br);background:var(--card);color:var(--tx);font:inherit;font-size:.9rem;cursor:pointer}
+.seg button.on{background:var(--pri);color:var(--onpri);border-color:var(--pri);font-weight:600}
+.kpis{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
+.kpis div{background:var(--bg);border-radius:10px;padding:10px}
+.kpis b{display:block;font-size:1.1rem}
+.kpis span{font-size:.75rem;color:var(--mut)}
+.tco{display:flex;height:12px;border-radius:8px;overflow:hidden;background:var(--br);margin:8px 0}
+.tco i{display:block;height:100%}
+.c-carburante{background:var(--c-carburante)}.c-fissa{background:var(--c-fissa)}.c-ordinaria{background:var(--c-ordinaria)}.c-straordinaria{background:var(--c-straordinaria)}
+.leg{list-style:none;margin:0;padding:0;font-size:.88rem}
+.leg li{display:flex;align-items:center;gap:8px;padding:2px 0}
+.leg li i{width:10px;height:10px;border-radius:3px;flex:none}
+.leg li b{margin-left:auto}
+.al{padding:8px 10px;border-radius:10px;margin-top:6px;font-size:.92rem;border-left:4px solid var(--warn);background:color-mix(in srgb,var(--warn) 12%,transparent)}
+.al.late{border-color:var(--bad);background:color-mix(in srgb,var(--bad) 12%,transparent)}
+.bar{height:10px;background:var(--br);border-radius:6px;overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;border-radius:6px}
+.bar i.ok,.pill.ok{background:var(--ok)}.bar i.warn,.pill.warn{background:var(--warn)}.bar i.late,.pill.late{background:var(--bad)}
+.pill{color:#fff;font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:99px}
+.amt{white-space:nowrap}
+.badge{display:inline-block;font-size:.72rem;padding:1px 7px;border-radius:99px;border:1px solid var(--br);color:var(--mut)}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center;z-index:20}
+.modal.hidden{display:none}
+.sheet{background:var(--card);width:100%;max-width:560px;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+@media(min-width:700px){.modal{align-items:center}.sheet{border-radius:20px}}
+.sh-h{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sh-h h2{margin:0;font-size:1.15rem}
+.x{background:none;border:0;color:var(--mut);font-size:1.2rem;cursor:pointer}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fld{display:flex;flex-direction:column;gap:4px;font-size:.82rem;color:var(--mut)}
+.fld.w2,.chk,.btns,.note{grid-column:1/-1}
+.chk{display:flex;align-items:center;gap:8px;color:var(--tx)}
+.chk input{width:auto}
+.btns{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
+#toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(90px + env(safe-area-inset-bottom));background:#111c;color:#fff;padding:10px 16px;border-radius:99px;font-size:.9rem;opacity:0;pointer-events:none;transition:opacity .2s;z-index:30;backdrop-filter:blur(6px)}
+#toast.on{opacity:1}
+#printArea{display:none}
+@media print{body>*:not(#printArea){display:none!important}#printArea{display:block;color:#000;background:#fff;padding:0}#printArea table{width:100%;border-collapse:collapse;font-size:11pt}#printArea th,#printArea td{border:1px solid #999;padding:4px 6px;text-align:left}}
+</style>
+</head>
+<body>
+<header class="top"><h1>🚗 Garage Manager</h1><span class="ver" id="ver"></span></header>
+<main id="view"></main>
+<nav class="bottom" id="nav"></nav>
+<div id="modal" class="modal hidden"></div>
+<div id="toast"></div>
+<div id="printArea"></div>
+<input type="file" id="fileIn" accept="application/json,.json" hidden>
+<script>
+'use strict';
+const VERSION='0.1.0';
+const KEY='garageManager.db';
+const TIPI=['Auto','Moto','Scooter','Furgone','Altro'];
+const ICON={Auto:'🚗',Moto:'🏍️',Scooter:'🛵',Furgone:'🚐',Altro:'🚙'};
+const ALIM=['Benzina','Diesel','Elettrica','Ibrida','GPL','Metano'];
+const CATS={
+  bollo:{l:'Bollo',g:'fissa'},
+  assicurazione:{l:'Assicurazione',g:'fissa'},
+  revisione:{l:'Revisione ministeriale',g:'fissa'},
+  ctt_asi:{l:'CTT / Tessera ASI',g:'fissa'},
+  altro_fisso:{l:'Altro costo fisso',g:'fissa'},
+  tagliando:{l:'Tagliando',g:'ordinaria'},
+  gomme:{l:'Cambio gomme',g:'ordinaria'},
+  freni:{l:'Pastiglie / dischi freni',g:'ordinaria'},
+  altro_ord:{l:'Altra manutenzione ordinaria',g:'ordinaria'},
+  riparazione:{l:'Riparazione / straordinaria',g:'straordinaria'}
+};
+const GRP={fissa:'Tasse e assicurazione',ordinaria:'Manutenzione ordinaria',straordinaria:'Riparazioni'};
+const PRESETS=[['Cambio olio e filtro',15000,12],['Cinghia di distribuzione',100000,60],['Liquido freni',null,24],['Filtro aria',30000,36]];
+
+/* ---------- utilità ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const N=v=>(v===''||v==null||isNaN(Number(v)))?null:Number(v);
+const pad=n=>String(n).padStart(2,'0');
+const toISO=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const todayISO=()=>toISO(new Date());
+const parseISO=s=>{const p=s.split('-').map(Number);return new Date(p[0],p[1]-1,p[2])};
+const daysBetween=(a,b)=>Math.round((parseISO(b)-parseISO(a))/86400000);
+const daysTo=iso=>daysBetween(todayISO(),iso);
+const addMonths=(iso,n)=>{const d=parseISO(iso);const day=d.getDate();d.setDate(1);d.setMonth(d.getMonth()+n);const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();d.setDate(Math.min(day,last));return toISO(d)};
+const eur=n=>new Intl.NumberFormat('it-IT',{style:'currency',currency:'EUR'}).format(n||0);
+const num=(n,d=1)=>new Intl.NumberFormat('it-IT',{maximumFractionDigits:d}).format(n||0);
+const fdate=iso=>iso?iso.split('-').reverse().join('/'):'—';
+const vname=v=>v.marca+' '+v.modello;
+const unitOf=v=>v.alimentazione==='Elettrica'?'kWh':(v.alimentazione==='Metano'?'kg':'l');
+
+/* ---------- database ---------- */
+function emptyDb(){return{app:'garage-manager',schemaVersion:1,exportedAt:null,vehicles:[],expenses:[],fuelLogs:[],rules:[]}}
+function normalize(o){const b=emptyDb();['vehicles','expenses','fuelLogs','rules'].forEach(k=>{b[k]=Array.isArray(o[k])?o[k]:[]});return b}
+function loadDb(){try{const r=localStorage.getItem(KEY);if(r)return normalize(JSON.parse(r))}catch(e){console.error(e)}return emptyDb()}
+let db=loadDb();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Errore di salvataggio: spazio esaurito?')}}
+let ui={tab:'dashboard',vid:null,reg:'spese'};
+function curV(){if(!db.vehicles.find(v=>v.id===ui.vid))ui.vid=db.vehicles.length?db.vehicles[0].id:null;return db.vehicles.find(v=>v.id===ui.vid)}
+function bumpKm(v,km){if(km&&km>v.km){v.km=km;v.kmData=todayISO()}}
+
+/* ---------- calcoli ---------- */
+function consumption(fl){
+  const s=fl.filter(f=>f.km>0&&f.quantita>0).sort((a,b)=>a.km-b.km);
+  const fulls=s.filter(f=>f.pieno);
+  if(fulls.length<2)return null;
+  const a=fulls[0],b=fulls[fulls.length-1];
+  const dist=b.km-a.km;if(dist<=0)return null;
+  const q=s.filter(f=>f.km>a.km&&f.km<=b.km).reduce((t,f)=>t+f.quantita,0);
+  if(q<=0)return null;
+  return{per100:q/dist*100,kmPerUnit:dist/q};
+}
+function stats(v){
+  const ex=db.expenses.filter(e=>e.vehicleId===v.id),fl=db.fuelLogs.filter(f=>f.vehicleId===v.id);
+  const by={carburante:0,fissa:0,ordinaria:0,straordinaria:0};
+  fl.forEach(f=>{by.carburante+=f.totale||0});
+  ex.forEach(e=>{const g=(CATS[e.categoria]||{}).g||'ordinaria';by[g]+=e.costo||0});
+  const total=by.carburante+by.fissa+by.ordinaria+by.straordinaria;
+  const dates=ex.map(e=>e.data).concat(fl.map(f=>f.data)).filter(Boolean).sort();
+  let perMonth=null;
+  if(dates.length){const months=Math.max(1,daysBetween(dates[0],todayISO())/30.44);perMonth=total/months}
+  const lim=toISO(new Date(Date.now()-365*86400000));
+  const last12=ex.filter(e=>e.data>=lim).reduce((t,e)=>t+(e.costo||0),0)+fl.filter(f=>f.data>=lim).reduce((t,f)=>t+(f.totale||0),0);
+  const kms=ex.map(e=>e.km).concat(fl.map(f=>f.km)).filter(k=>k>0);
+  let perKm=null;
+  if(kms.length){const d=v.km-Math.min.apply(null,kms);if(d>0)perKm=total/d}
+  return{by,total,perMonth,last12,perKm,cons:consumption(fl)};
+}
+function ruleStatus(r,v){
+  let remKm=null,remDays=null,pctKm=0,pctT=0,nextDate=null;
+  if(r.ogniKm){remKm=(r.ultimoKm||0)+r.ogniKm-v.km;pctKm=(v.km-(r.ultimoKm||0))/r.ogniKm*100}
+  if(r.ogniMesi&&r.ultimaData){nextDate=addMonths(r.ultimaData,r.ogniMesi);remDays=daysTo(nextDate);const tot=Math.max(1,daysBetween(r.ultimaData,nextDate));pctT=(tot-remDays)/tot*100}
+  const pct=Math.max(pctKm,pctT);
+  let st='ok';
+  if((remKm!==null&&remKm<=0)||(remDays!==null&&remDays<=0))st='late';
+  else if(pct>=85||(remKm!==null&&remKm<=1000)||(remDays!==null&&remDays<=30))st='warn';
+  return{remKm,remDays,nextDate,st,pct:Math.max(0,Math.min(100,pct))};
+}
+function alerts(v){
+  const out=[];
+  // scadenze fisse: per categoria, la scadenza più recente
+  const last={};
+  db.expenses.filter(e=>e.vehicleId===v.id&&e.scadenza&&(CATS[e.categoria]||{}).g==='fissa').forEach(e=>{
+    if(!last[e.categoria]||e.scadenza>last[e.categoria].scadenza)last[e.categoria]=e;
+  });
+  Object.keys(last).forEach(k=>{
+    const d=daysTo(last[k].scadenza),n=CATS[k].l;
+    if(d<0)out.push({sev:'late',text:n+' scaduto da '+(-d)+' giorni'});
+    else if(d<=30)out.push({sev:'warn',text:n+' in scadenza tra '+d+(d===1?' giorno':' giorni')});
+  });
+  db.rules.filter(r=>r.vehicleId===v.id).forEach(r=>{
+    const s=ruleStatus(r,v);
+    if(s.st==='ok')return;
+    let t=r.nome+': ';const p=[];
+    if(s.remKm!==null)p.push(s.remKm>=0?'tra '+num(s.remKm,0)+' km':'superato di '+num(-s.remKm,0)+' km');
+    if(s.remDays!==null)p.push(s.remDays>=0?'tra '+s.remDays+' giorni':'scaduto da '+(-s.remDays)+' giorni');
+    out.push({sev:s.st,text:t+p.join(' / ')});
+  });
+  return out;
+}
+
+/* ---------- UI helper ---------- */
+let toastT;
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2200)}
+function closeModal(){const m=$('#modal');m.classList.add('hidden');m.innerHTML=''}
+function field(f){
+  const v=f.v==null?'':f.v,req=f.req?' required':'',w=f.w===2?' w2':'';
+  if(f.t==='checkbox')return'<label class="chk"><input type="checkbox" name="'+f.n+'"'+(f.v?' checked':'')+'> '+esc(f.l)+'</label>';
+  let inp;
+  if(f.t==='select'){
+    inp='<select name="'+f.n+'"'+req+'>'+f.opts.map(o=>{const a=Array.isArray(o)?o:[o,o];return'<option value="'+esc(a[0])+'"'+(String(a[0])===String(v)?' selected':'')+'>'+esc(a[1])+'</option>'}).join('')+'</select>';
+  }else if(f.t==='textarea'){
+    inp='<textarea name="'+f.n+'" rows="2">'+esc(v)+'</textarea>';
+  }else{
+    inp='<input name="'+f.n+'" type="'+(f.t||'text')+'" value="'+esc(v)+'"'+(f.t==='number'?' step="'+(f.step||'any')+'" inputmode="decimal"':'')+req+'>';
+  }
+  return'<label class="fld'+w+'"><span>'+esc(f.l)+'</span>'+inp+'</label>';
+}
+function openForm(title,fields,onSubmit,submit){
+  const m=$('#modal');
+  m.innerHTML='<div class="sheet"><div class="sh-h"><h2>'+esc(title)+'</h2><button type="button" class="x" data-act="closeModal">✕</button></div><form id="mf" class="grid">'+fields.map(field).join('')+'<div class="btns"><button type="button" class="btn ghost" data-act="closeModal">Annulla</button><button class="btn">'+esc(submit||'Salva')+'</button></div></form></div>';
+  m.classList.remove('hidden');
+  $('#mf').addEventListener('submit',e=>{
+    e.preventDefault();
+    const fd=new FormData(e.target),o={};
+    fields.forEach(f=>{o[f.n]=f.t==='checkbox'?fd.has(f.n):(fd.get(f.n)==null?'':fd.get(f.n))});
+    if(onSubmit(o)!==false)closeModal();
+  });
+}
+function noVeh(){return'<div class="card center"><h3>Nessun veicolo</h3><p class="mut">Aggiungi prima un veicolo nel Garage.</p><button class="btn" data-act="addVehicle">+ Aggiungi veicolo</button></div>'}
+function vehBar(v){return'<div class="vbar"><select id="vsel">'+db.vehicles.map(x=>'<option value="'+x.id+'"'+(x.id===v.id?' selected':'')+'>'+esc(ICON[x.tipo]||'🚙')+' '+esc(vname(x))+(x.targa?' · '+esc(x.targa):'')+'</option>').join('')+'</select></div>'}
+function ago(iso){const d=-daysTo(iso);return d<=0?'oggi':d===1?'ieri':d+' giorni fa'}
+
+/* ---------- viste ---------- */
+const TABS=[['dashboard','📊','Home'],['garage','🚘','Garage'],['registro','🧾','Registro'],['piano','🛠️','Piano'],['backup','💾','Dati']];
+function renderNav(){$('#nav').innerHTML=TABS.map(t=>'<button data-tab="'+t[0]+'" class="'+(ui.tab===t[0]?'on':'')+'"><span>'+t[1]+'</span>'+t[2]+'</button>').join('')}
+
+function renderDashboard(){
+  if(!db.vehicles.length)return'<div class="card center"><h3>Il garage è vuoto</h3><p class="mut">Aggiungi il tuo primo veicolo per iniziare.</p><button class="btn" data-act="addVehicle">+ Aggiungi veicolo</button></div>';
+  const all=[];
+  db.vehicles.forEach(v=>alerts(v).forEach(a=>all.push({sev:a.sev,text:a.text,v:v})));
+  const lb=localStorage.getItem(KEY+'.lastBackup');
+  if(!lb||daysTo(lb.slice(0,10))<-30)all.push({sev:'warn',text:lb?'Ultimo backup oltre 30 giorni fa: scarica un nuovo JSON.':'Non hai ancora fatto un backup: scarica il JSON dalla sezione Dati.',v:null});
+  let h=all.length?'<section class="card"><h3>⚠️ Promemoria</h3>'+all.map(a=>'<div class="al '+a.sev+'">'+(a.v?'<b>'+esc(vname(a.v))+'</b> · ':'')+esc(a.text)+'</div>').join('')+'</section>'
+    :'<section class="card ok"><h3>✅ Tutto in regola</h3><div class="mut small">Nessuna scadenza imminente.</div></section>';
+  const parts=[['carburante','Carburante'],['fissa','Tasse e assicurazione'],['ordinaria','Manutenzione ordinaria'],['straordinaria','Riparazioni extra']];
+  db.vehicles.forEach(v=>{
+    const s=stats(v),el=v.alimentazione==='Elettrica';
+    const cons=s.cons?num(s.cons.per100)+' '+unitOf(v)+'/100 km':'—';
+    const consSub='consumo medio'+(s.cons&&!el?' · '+num(s.cons.kmPerUnit)+' km/'+unitOf(v):'');
+    h+='<section class="card"><h3>'+(ICON[v.tipo]||'🚙')+' '+esc(vname(v))+'</h3><div class="mut small">'+esc(v.targa||'')+(v.targa?' · ':'')+num(v.km,0)+' km (agg. '+fdate(v.kmData)+')</div>'
+      +'<div class="kpis"><div><b>'+eur(s.last12)+'</b><span>ultimi 12 mesi</span></div><div><b>'+(s.perMonth!=null?eur(s.perMonth):'—')+'</b><span>media mensile</span></div>'
+      +'<div><b>'+(s.perKm!=null?eur(s.perKm):'—')+'</b><span>€ / km</span></div><div><b>'+cons+'</b><span>'+consSub+'</span></div></div>';
+    if(s.total>0){
+      h+='<div class="small"><b>Costo totale di possesso: '+eur(s.total)+'</b></div><div class="tco">'+parts.map(p=>'<i class="c-'+p[0]+'" style="width:'+(s.by[p[0]]/s.total*100)+'%"></i>').join('')+'</div>'
+        +'<ul class="leg">'+parts.map(p=>'<li><i class="c-'+p[0]+'"></i>'+p[1]+'<b>'+eur(s.by[p[0]])+'</b></li>').join('')+'</ul>';
+    }else h+='<div class="mut small">Nessuna spesa registrata.</div>';
+    h+='</section>';
+  });
+  return h;
+}
+
+function renderGarage(){
+  let h='<button class="btn full" data-act="addVehicle">+ Aggiungi veicolo</button>';
+  if(!db.vehicles.length)return h+'<p class="mut center">Nessun veicolo inserito.</p>';
+  db.vehicles.forEach(v=>{
+    const old=v.kmData&&daysTo(v.kmData)<-30;
+    h+='<section class="card"><div class="row"><h3>'+(ICON[v.tipo]||'🚙')+' '+esc(vname(v))+'</h3><span class="badge">'+esc(v.tipo)+'</span></div>'
+      +'<div class="mut small">'+esc(v.allestimento||'')+(v.allestimento&&v.anno?' · ':'')+(v.anno||'')+' · '+esc(v.alimentazione)+'</div>'
+      +'<div class="small">'+(v.targa?'Targa <b>'+esc(v.targa)+'</b>':'')+(v.vin?' · VIN '+esc(v.vin):'')+'</div>'
+      +'<div style="margin-top:6px"><b>'+num(v.km,0)+' km</b> <span class="mut small">aggiornati il '+fdate(v.kmData)+' ('+ago(v.kmData)+')</span></div>'
+      +(old?'<div class="small" style="color:var(--warn)">Km non aggiornati da oltre 30 giorni: i promemoria potrebbero essere imprecisi.</div>':'')
+      +'<div class="row gap"><button class="btn sm" data-act="kmUpdate" data-id="'+v.id+'">Aggiorna km</button><button class="btn sm ghost" data-act="editVehicle" data-id="'+v.id+'">Modifica</button><button class="btn sm ghost" data-act="delVehicle" data-id="'+v.id+'" style="color:var(--bad)">Elimina</button></div></section>';
+  });
+  return h;
+}
+
+function renderRegistro(){
+  if(!db.vehicles.length)return noVeh();
+  const v=curV();
+  let h=vehBar(v)+'<div class="seg"><button data-act="regTab" data-v="spese" class="'+(ui.reg==='spese'?'on':'')+'">Spese e manutenzione</button><button data-act="regTab" data-v="fuel" class="'+(ui.reg==='fuel'?'on':'')+'">Rifornimenti</button></div>';
+  if(ui.reg==='spese'){
+    const list=db.expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>(b.data||'').localeCompare(a.data||''));
+    h+='<button class="btn full" data-act="addExp">+ Nuova spesa</button>';
+    if(!list.length)return h+'<p class="mut center">Nessuna spesa registrata.</p>';
+    h+=list.map(e=>{
+      const c=CATS[e.categoria]||{l:e.categoria};
+      return'<div class="card"><div class="row"><div><b>'+esc(e.voce||c.l)+'</b><div class="mut small">'+esc(c.l)+' · '+fdate(e.data)+(e.km?' · '+num(e.km,0)+' km':'')+'</div></div><b class="amt">'+eur(e.costo)+'</b></div>'
+        +((e.officina||e.fattura)?'<div class="mut small">'+(e.officina?'🔧 '+esc(e.officina)+' ':'')+(e.fattura?'🧾 '+esc(e.fattura):'')+'</div>':'')
+        +(e.scadenza?'<div class="small">Prossima scadenza: <b>'+fdate(e.scadenza)+'</b></div>':'')
+        +(e.note?'<div class="mut small">'+esc(e.note)+'</div>':'')
+        +'<div class="row end"><button class="lnk" data-act="editExp" data-id="'+e.id+'">Modifica</button><button class="lnk bad" data-act="delExp" data-id="'+e.id+'">Elimina</button></div></div>';
+    }).join('');
+  }else{
+    const list=db.fuelLogs.filter(f=>f.vehicleId===v.id).sort((a,b)=>(b.data||'').localeCompare(a.data||'')||b.km-a.km);
+    const s=consumption(list),u=unitOf(v);
+    h+='<button class="btn full" data-act="addFuel">+ Nuovo rifornimento</button>';
+    if(s)h+='<div class="card"><b>Consumo medio reale: '+num(s.per100)+' '+u+'/100 km</b>'+(v.alimentazione!=='Elettrica'?' <span class="mut">('+num(s.kmPerUnit)+' km/'+u+')</span>':'')+'<div class="mut small">Calcolato da pieno a pieno.</div></div>';
+    else h+='<div class="card mut small">Servono almeno due rifornimenti con "pieno" per calcolare il consumo medio.</div>';
+    h+=list.map(f=>'<div class="card"><div class="row"><div><b>'+num(f.quantita,2)+' '+u+'</b> '+(f.pieno?'<span class="badge">pieno</span>':'')+'<div class="mut small">'+fdate(f.data)+' · '+num(f.km,0)+' km'+(f.quantita>0?' · '+eur(f.totale/f.quantita)+'/'+u:'')+'</div></div><b class="amt">'+eur(f.totale)+'</b></div>'
+      +'<div class="row end"><button class="lnk" data-act="editFuel" data-id="'+f.id+'">Modifica</button><button class="lnk bad" data-act="delFuel" data-id="'+f.id+'">Elimina</button></div></div>').join('');
+  }
+  return h;
+}
+
+function renderPiano(){
+  if(!db.vehicles.length)return noVeh();
+  const v=curV(),rules=db.rules.filter(r=>r.vehicleId===v.id);
+  let h=vehBar(v)+'<div class="mut small">Km attuali: <b>'+num(v.km,0)+'</b> (agg. '+fdate(v.kmData)+') <button class="lnk" data-act="kmUpdate" data-id="'+v.id+'">aggiorna</button></div>'
+    +'<div class="row gap" style="margin-bottom:12px"><button class="btn" data-act="addRule">+ Regola</button><button class="btn ghost" data-act="presets">Regole suggerite</button></div>';
+  if(!rules.length)return h+'<p class="mut center">Nessuna regola di manutenzione definita.</p>';
+  const lab={ok:'OK',warn:'In scadenza',late:'Scaduto'};
+  h+=rules.map(r=>{
+    const s=ruleStatus(r,v),p=[];
+    if(s.remKm!==null)p.push(s.remKm>=0?'mancano '+num(s.remKm,0)+' km':'superato di '+num(-s.remKm,0)+' km');
+    if(s.remDays!==null)p.push(s.remDays>=0?s.remDays+' giorni ('+fdate(s.nextDate)+')':'scaduto da '+(-s.remDays)+' giorni');
+    return'<div class="card"><div class="row"><b>'+esc(r.nome)+'</b><span class="pill '+s.st+'">'+lab[s.st]+'</span></div><div class="bar"><i class="'+s.st+'" style="width:'+s.pct+'%"></i></div>'
+      +'<div class="small">'+p.join(' · ')+'</div>'
+      +'<div class="mut small">Ogni '+(r.ogniKm?num(r.ogniKm,0)+' km':'')+(r.ogniKm&&r.ogniMesi?' o ':'')+(r.ogniMesi?r.ogniMesi+' mesi':'')+' · ultimo: '+(r.ultimoKm!=null?num(r.ultimoKm,0)+' km ':'')+fdate(r.ultimaData)+'</div>'
+      +'<div class="row gap"><button class="btn sm" data-act="doneRule" data-id="'+r.id+'">✔ Fatto</button><button class="btn sm ghost" data-act="editRule" data-id="'+r.id+'">Modifica</button><button class="btn sm ghost" data-act="delRule" data-id="'+r.id+'" style="color:var(--bad)">Elimina</button></div></div>';
+  }).join('');
+  return h;
+}
+
+function renderBackup(){
+  const lb=localStorage.getItem(KEY+'.lastBackup');
+  let h='<section class="card"><h3>Backup completo (JSON)</h3><p class="mut small">Veicoli, spese, rifornimenti e regole in un solo file. Ultimo backup: <b>'+(lb?fdate(lb.slice(0,10)):'mai')+'</b>.</p>'
+    +'<div class="row gap"><button class="btn" data-act="exportJson">⬇ Scarica backup</button><button class="btn ghost" data-act="importJson">⬆ Ripristina da file</button></div></section>'
+    +'<section class="card"><h3>Dati salvati</h3><div class="small">'+db.vehicles.length+' veicoli · '+db.expenses.length+' spese · '+db.fuelLogs.length+' rifornimenti · '+db.rules.length+' regole</div></section>';
+  if(db.vehicles.length){
+    const v=curV();
+    h+='<section class="card"><h3>Report per rivendita</h3><p class="mut small">Storico manutenzioni del veicolo selezionato.</p>'+vehBar(v)
+      +'<div class="row gap"><button class="btn ghost" data-act="exportCsv">Esporta CSV</button><button class="btn ghost" data-act="printReport">Stampa / PDF</button></div></section>';
+  }
+  h+='<section class="card"><h3>Zona pericolosa</h3><button class="btn danger" data-act="resetAll">Cancella tutti i dati</button></section>';
+  return h;
+}
+
+function render(){
+  renderNav();
+  const f={dashboard:renderDashboard,garage:renderGarage,registro:renderRegistro,piano:renderPiano,backup:renderBackup}[ui.tab];
+  $('#view').innerHTML=f();
+}
+
+/* ---------- form ---------- */
+function vehicleForm(id){
+  const v=id?db.vehicles.find(x=>x.id===id):{tipo:'Auto',alimentazione:'Benzina',kmData:todayISO()};
+  openForm(id?'Modifica veicolo':'Nuovo veicolo',[
+    {n:'tipo',l:'Tipo',t:'select',opts:TIPI,v:v.tipo,w:2},
+    {n:'marca',l:'Marca',req:1,v:v.marca},{n:'modello',l:'Modello',req:1,v:v.modello},
+    {n:'allestimento',l:'Allestimento',v:v.allestimento},{n:'anno',l:'Anno',t:'number',step:1,v:v.anno},
+    {n:'targa',l:'Targa',v:v.targa},{n:'vin',l:'VIN (opzionale)',v:v.vin},
+    {n:'km',l:'Chilometraggio attuale',t:'number',req:1,v:v.km},{n:'kmData',l:'Data aggiornamento km',t:'date',v:v.kmData},
+    {n:'alimentazione',l:'Alimentazione',t:'select',opts:ALIM,v:v.alimentazione,w:2}
+  ],o=>{
+    const rec={tipo:o.tipo,marca:o.marca.trim(),modello:o.modello.trim(),allestimento:o.allestimento.trim(),anno:N(o.anno),targa:o.targa.trim().toUpperCase(),vin:o.vin.trim().toUpperCase(),km:N(o.km)||0,kmData:o.kmData||todayISO(),alimentazione:o.alimentazione};
+    if(id)Object.assign(v,rec);else{rec.id=uid();db.vehicles.push(rec);ui.vid=rec.id}
+    save();render();toast('Veicolo salvato');
+  });
+}
+function kmForm(id){
+  const v=db.vehicles.find(x=>x.id===id);
+  openForm('Aggiorna chilometraggio',[{n:'km',l:'Km attuali',t:'number',req:1,v:v.km},{n:'kmData',l:'Data',t:'date',v:todayISO()}],o=>{
+    v.km=N(o.km)||0;v.kmData=o.kmData||todayISO();save();render();toast('Km aggiornati');
+  });
+}
+function expenseForm(id){
+  const v=curV();
+  const e=id?db.expenses.find(x=>x.id===id):{categoria:'tagliando',data:todayISO(),km:v.km};
+  const opts=Object.keys(CATS).map(k=>[k,GRP[CATS[k].g]+' — '+CATS[k].l]);
+  openForm(id?'Modifica spesa':'Nuova spesa',[
+    {n:'categoria',l:'Categoria',t:'select',opts:opts,v:e.categoria,w:2},
+    {n:'voce',l:'Descrizione',v:e.voce,w:2},
+    {n:'data',l:'Data',t:'date',req:1,v:e.data},{n:'costo',l:'Costo (€)',t:'number',req:1,v:e.costo},
+    {n:'km',l:'Km al momento',t:'number',v:e.km},{n:'officina',l:'Officina',v:e.officina},
+    {n:'fattura',l:'Fattura / ricevuta (n°)',v:e.fattura,w:2},
+    {n:'scadenza',l:'Prossima scadenza',t:'date',v:e.scadenza},{n:'ripeti',l:'Oppure ripeti ogni (mesi)',t:'number',step:1,v:e.ripeti},
+    {n:'note',l:'Note',t:'textarea',v:e.note,w:2}
+  ],o=>{
+    const rec={vehicleId:v.id,categoria:o.categoria,voce:o.voce.trim(),data:o.data,costo:N(o.costo)||0,km:N(o.km),officina:o.officina.trim(),fattura:o.fattura.trim(),scadenza:o.scadenza||null,ripeti:N(o.ripeti),note:o.note.trim()};
+    if(CATS[rec.categoria].g==='fissa'&&!rec.scadenza&&rec.ripeti)rec.scadenza=addMonths(rec.data,rec.ripeti);
+    if(id)Object.assign(e,rec);else{rec.id=uid();db.expenses.push(rec)}
+    bumpKm(v,rec.km);save();render();toast('Spesa salvata');
+  });
+}
+function fuelForm(id){
+  const v=curV(),u=unitOf(v);
+  const f=id?db.fuelLogs.find(x=>x.id===id):{data:todayISO(),km:v.km,pieno:true};
+  openForm(id?'Modifica rifornimento':'Nuovo rifornimento',[
+    {n:'data',l:'Data',t:'date',req:1,v:f.data},{n:'km',l:'Km al rifornimento',t:'number',req:1,v:f.km},
+    {n:'quantita',l:'Quantità ('+u+')',t:'number',req:1,v:f.quantita},{n:'totale',l:'Spesa totale (€)',t:'number',req:1,v:f.totale},
+    {n:'pieno',l:'Pieno completo',t:'checkbox',v:f.pieno}
+  ],o=>{
+    const rec={vehicleId:v.id,data:o.data,km:N(o.km)||0,quantita:N(o.quantita)||0,totale:N(o.totale)||0,pieno:!!o.pieno};
+    if(id)Object.assign(f,rec);else{rec.id=uid();db.fuelLogs.push(rec)}
+    bumpKm(v,rec.km);save();render();toast('Rifornimento salvato');
+  });
+}
+function ruleForm(id){
+  const v=curV();
+  const r=id?db.rules.find(x=>x.id===id):{ultimoKm:v.km,ultimaData:todayISO()};
+  openForm(id?'Modifica regola':'Nuova regola',[
+    {n:'nome',l:'Nome intervento',req:1,v:r.nome,w:2},
+    {n:'ogniKm',l:'Ogni (km)',t:'number',step:1,v:r.ogniKm},{n:'ogniMesi',l:'Ogni (mesi)',t:'number',step:1,v:r.ogniMesi},
+    {n:'ultimoKm',l:'Km ultimo intervento',t:'number',v:r.ultimoKm},{n:'ultimaData',l:'Data ultimo intervento',t:'date',v:r.ultimaData}
+  ],o=>{
+    const rec={vehicleId:v.id,nome:o.nome.trim(),ogniKm:N(o.ogniKm),ogniMesi:N(o.ogniMesi),ultimoKm:N(o.ultimoKm),ultimaData:o.ultimaData||null};
+    if(!rec.ogniKm&&!rec.ogniMesi){toast('Indica un intervallo in km o in mesi');return false}
+    if(rec.ogniMesi&&!rec.ultimaData)rec.ultimaData=todayISO();
+    if(rec.ogniKm&&rec.ultimoKm==null)rec.ultimoKm=v.km;
+    if(id)Object.assign(r,rec);else{rec.id=uid();db.rules.push(rec)}
+    save();render();toast('Regola salvata');
+  });
+}
+function doneForm(id){
+  const v=curV(),r=db.rules.find(x=>x.id===id);
+  openForm('Intervento eseguito: '+r.nome,[
+    {n:'data',l:'Data',t:'date',req:1,v:todayISO()},{n:'km',l:'Km',t:'number',req:1,v:v.km},
+    {n:'costo',l:'Costo (€, opzionale)',t:'number'},{n:'officina',l:'Officina'}
+  ],o=>{
+    r.ultimaData=o.data;r.ultimoKm=N(o.km)||v.km;bumpKm(v,r.ultimoKm);
+    const c=N(o.costo);
+    if(c>0)db.expenses.push({id:uid(),vehicleId:v.id,categoria:'altro_ord',voce:r.nome,data:o.data,costo:c,km:r.ultimoKm,officina:o.officina.trim(),fattura:'',scadenza:null,ripeti:null,note:''});
+    save();render();toast('Intervento registrato');
+  });
+}
+
+/* ---------- backup ---------- */
+function download(blob,name){const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1500)}
+function exportJson(){
+  db.exportedAt=new Date().toISOString();
+  download(new Blob([JSON.stringify(db,null,2)],{type:'application/json'}),'garage-backup-'+todayISO()+'.json');
+  localStorage.setItem(KEY+'.lastBackup',db.exportedAt);save();render();toast('Backup scaricato');
+}
+function importFile(file){
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const o=JSON.parse(r.result);
+      if(o.app!=='garage-manager'||!Array.isArray(o.vehicles))throw new Error('il file non è un backup di Garage Manager');
+      const n=normalize(o);
+      n.expenses=n.expenses.filter(e=>n.vehicles.some(v=>v.id===e.vehicleId));
+      n.fuelLogs=n.fuelLogs.filter(e=>n.vehicles.some(v=>v.id===e.vehicleId));
+      n.rules=n.rules.filter(e=>n.vehicles.some(v=>v.id===e.vehicleId));
+      if(!confirm('Il backup contiene '+n.vehicles.length+' veicoli, '+n.expenses.length+' spese, '+n.fuelLogs.length+' rifornimenti, '+n.rules.length+' regole.\n\nSostituire TUTTI i dati attuali?'))return;
+      try{localStorage.setItem(KEY+'.prev',JSON.stringify(db))}catch(e){}
+      db=n;ui.vid=null;save();render();toast('Backup ripristinato');
+    }catch(e){alert('Importazione fallita: '+e.message)}
+  };
+  r.readAsText(file);
+}
+function exportCsv(){
+  const v=curV();
+  const rows=[['Data','Categoria','Descrizione','Km','Costo (€)','Officina','Fattura','Note']];
+  db.expenses.filter(e=>e.vehicleId===v.id).sort((a,b)=>(a.data||'').localeCompare(b.data||'')).forEach(e=>rows.push([e.data,(CATS[e.categoria]||{}).l||e.categoria,e.voce,e.km==null?'':e.km,String(e.costo).replace('.',','),e.officina,e.fattura,e.note]));
+  const csv='﻿'+rows.map(r=>r.map(c=>'"'+String(c==null?'':c).replace(/"/g,'""')+'"').join(';')).join('\r\n');
+  download(new Blob([csv],{type:'text/csv;charset=utf-8'}),'spese-'+(v.targa||v.modello).replace(/\s+/g,'_')+'-'+todayISO()+'.csv');
+}
+function printReport(){
+  const v=curV();
+  const list=db.expenses.filter(e=>e.vehicleId===v.id&&CATS[e.categoria]&&CATS[e.categoria].g!=='fissa').sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  $('#printArea').innerHTML='<h1>'+esc(vname(v))+(v.allestimento?' '+esc(v.allestimento):'')+'</h1><p>Targa: '+esc(v.targa||'—')+(v.vin?' · VIN: '+esc(v.vin):'')+' · Anno: '+(v.anno||'—')+' · '+esc(v.alimentazione)+' · '+num(v.km,0)+' km (agg. '+fdate(v.kmData)+')</p><h2>Storico manutenzioni</h2>'
+    +(list.length?'<table><tr><th>Data</th><th>Intervento</th><th>Km</th><th>Officina</th><th>Fattura</th><th>Costo</th></tr>'+list.map(e=>'<tr><td>'+fdate(e.data)+'</td><td>'+esc(e.voce||(CATS[e.categoria]||{}).l)+'</td><td>'+(e.km?num(e.km,0):'')+'</td><td>'+esc(e.officina)+'</td><td>'+esc(e.fattura)+'</td><td>'+eur(e.costo)+'</td></tr>').join('')+'</table><p><b>Totale: '+eur(list.reduce((t,e)=>t+e.costo,0))+'</b></p>':'<p>Nessun intervento registrato.</p>')
+    +'<p style="font-size:9pt">Generato il '+fdate(todayISO())+' con Garage Manager</p>';
+  window.print();
+}
+
+/* ---------- eventi ---------- */
+const A={
+  closeModal:closeModal,
+  addVehicle:()=>vehicleForm(),
+  editVehicle:d=>vehicleForm(d.id),
+  kmUpdate:d=>kmForm(d.id),
+  delVehicle:d=>{const v=db.vehicles.find(x=>x.id===d.id);if(!confirm('Eliminare '+vname(v)+' e tutto il suo storico?'))return;
+    db.vehicles=db.vehicles.filter(x=>x.id!==d.id);['expenses','fuelLogs','rules'].forEach(k=>{db[k]=db[k].filter(x=>x.vehicleId!==d.id)});save();render();toast('Veicolo eliminato')},
+  regTab:d=>{ui.reg=d.v;render()},
+  addExp:()=>expenseForm(),editExp:d=>expenseForm(d.id),
+  delExp:d=>{if(confirm('Eliminare questa spesa?')){db.expenses=db.expenses.filter(x=>x.id!==d.id);save();render()}},
+  addFuel:()=>fuelForm(),editFuel:d=>fuelForm(d.id),
+  delFuel:d=>{if(confirm('Eliminare questo rifornimento?')){db.fuelLogs=db.fuelLogs.filter(x=>x.id!==d.id);save();render()}},
+  addRule:()=>ruleForm(),editRule:d=>ruleForm(d.id),doneRule:d=>doneForm(d.id),
+  delRule:d=>{if(confirm('Eliminare questa regola?')){db.rules=db.rules.filter(x=>x.id!==d.id);save();render()}},
+  presets:()=>{const v=curV();if(!confirm('Aggiungere '+PRESETS.length+' regole suggerite (modificabili) a '+vname(v)+'?\nI conteggi partono da oggi e dai km attuali.'))return;
+    PRESETS.forEach(p=>db.rules.push({id:uid(),vehicleId:v.id,nome:p[0],ogniKm:p[1],ogniMesi:p[2],ultimoKm:v.km,ultimaData:todayISO()}));save();render();toast('Regole aggiunte')},
+  exportJson:exportJson,
+  importJson:()=>{$('#fileIn').value='';$('#fileIn').click()},
+  exportCsv:exportCsv,printReport:printReport,
+  resetAll:()=>{if(confirm('Cancellare TUTTI i dati? Questa azione non si può annullare.\n\nHai scaricato un backup?')){db=emptyDb();ui.vid=null;save();render();toast('Dati cancellati')}}
+};
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-tab]');
+  if(t){ui.tab=t.dataset.tab;render();window.scrollTo(0,0);return}
+  const a=e.target.closest('[data-act]');
+  if(a&&A[a.dataset.act])A[a.dataset.act](a.dataset);
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='vsel'){ui.vid=e.target.value;render()}
+  else if(e.target.id==='fileIn'&&e.target.files[0])importFile(e.target.files[0]);
+});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+$('#ver').textContent='v'+VERSION;
+render();
+</script>
+</body>
+</html>
