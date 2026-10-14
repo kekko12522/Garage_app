@@ -84,6 +84,7 @@ select,input,textarea{width:100%;font:inherit;color:var(--tx);background:var(--b
 .seg.sm button{font-size:.8rem;padding:8px 4px}
 .sortlbl{font-size:.78rem;color:var(--mut);margin:0 0 4px}
 .sumline{font-size:.85rem;color:var(--mut);margin:0 0 8px}
+.sectitle{font-weight:700;font-size:1.1rem;margin:2px 0}
 #printView{position:fixed;inset:0;background:#fff;color:#111;z-index:40;overflow:auto;display:none;-webkit-overflow-scrolling:touch}
 #printView.on{display:block}
 .pv-bar{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;background:#0f766e}
@@ -108,7 +109,7 @@ select,input,textarea{width:100%;font:inherit;color:var(--tx);background:var(--b
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 <script>
 'use strict';
-const VERSION='0.3.0';
+const VERSION='0.4.0';
 const KEY='garageManager.db';
 const TIPI=['Auto','Moto','Scooter','Furgone','Altro'];
 const ICON={Auto:'🚗',Moto:'🏍️',Scooter:'🛵',Furgone:'🚐',Altro:'🚙'};
@@ -129,6 +130,17 @@ const SCAD_CATS='assicurazione,bollo,revisione,ctt_asi,altro_fisso';
 const PARTS=['Olio','Candela','Cinghia','Filtro aria','Pastiglie posteriori','Pastiglie anteriori','Rulli centrifuga','Batteria'];
 const LEGACY_MAN={tagliando:'Tagliando',gomme:'Gomme',freni:'Freni',altro_ord:null,riparazione:'Riparazione'};
 const PRESETS=[['Cambio olio e filtro',15000,12],['Cinghia di distribuzione',100000,60],['Liquido freni',null,24],['Filtro aria',30000,36]];
+/* Prezzi medi annui nazionali, usati SOLO per stimare la quantità quando manca (€/litro; metano €/kg; elettricità €/kWh) */
+const PREZZI_PARZIALE=2026;
+const PREZZI_FONTI='Benzina, gasolio, GPL: MASE, prezzi medi annui IVA inclusa. Metano: MIMIT (via BenzinaItalia). Elettricità: Eurostat, utenze domestiche, tasse incluse, media dei due semestri. Il 2026 è parziale (dati al 14/10/2026).';
+const PREZZI={
+  benzina:{2005:1.2202,2006:1.2865,2007:1.3007,2008:1.3818,2009:1.2349,2010:1.3629,2011:1.5532,2012:1.7871,2013:1.7487,2014:1.7162,2015:1.5357,2016:1.4428,2017:1.5276,2018:1.6044,2019:1.5733,2020:1.4319,2021:1.6223,2022:1.8128,2023:1.8629,2024:1.821,2025:1.7332,2026:1.8541},
+  gasolio:{2005:1.1079,2006:1.1661,2007:1.1646,2008:1.3458,2009:1.0822,2010:1.2142,2011:1.4476,2012:1.7059,2013:1.6572,2014:1.6126,2015:1.406,2016:1.2805,2017:1.3825,2018:1.4909,2019:1.4789,2020:1.3176,2021:1.4838,2022:1.8141,2023:1.7911,2024:1.7166,2025:1.653,2026:1.9851},
+  gpl:{2005:0.5697,2006:0.6482,2007:0.6267,2008:0.6812,2009:0.5631,2010:0.6599,2011:0.7553,2012:0.8206,2013:0.8013,2014:0.7707,2015:0.612,2016:0.5636,2017:0.6325,2018:0.6746,2019:0.6323,2020:0.6054,2021:0.7042,2022:0.8143,2023:0.7492,2024:0.7239,2025:0.7158,2026:0.7549},
+  metano:{2014:0.992,2015:0.989,2016:0.983,2017:0.968,2018:0.972,2019:0.997,2020:0.98,2021:1.182,2022:2.097,2023:1.586,2024:1.358,2025:1.449},
+  elettrica:{2014:0.2106,2015:0.2107,2016:0.2115,2017:0.2197,2018:0.2257,2019:0.2476,2020:0.2469,2021:0.2616,2022:0.3691,2023:0.3877,2024:0.359,2025:0.3513}
+};
+
 
 /* ---------- utilità ---------- */
 const $=(s,r=document)=>r.querySelector(s);
@@ -149,6 +161,20 @@ const fmonth=m=>{if(!m)return '—';const p=m.split('-').map(Number);return new 
 const vname=v=>v.marca+' '+v.modello;
 const unitOf=v=>v.alimentazione==='Elettrica'?'kWh':(v.alimentazione==='Metano'?'kg':'l');
 const catOf=e=>CATS[e.categoria]||{l:e.categoria,g:'manutenzione'};
+function fuelKind(v){return({Benzina:'benzina',Diesel:'gasolio',GPL:'gpl',Metano:'metano',Elettrica:'elettrica',Ibrida:'benzina'})[v.alimentazione]||'benzina'}
+/* prezzo medio dell'anno; se l'anno manca usa il più vicino disponibile (exact=false) */
+function priceFor(v,year){
+  const t=PREZZI[fuelKind(v)];if(!t)return null;
+  const ys=Object.keys(t).map(Number).sort((a,b)=>a-b);
+  let y=year;
+  if(t[y]===undefined)y=year>ys[ys.length-1]?ys[ys.length-1]:ys[0];
+  return{price:t[y],year:y,exact:y===year,partial:y===PREZZI_PARZIALE};
+}
+function estimateQty(v,total,year){
+  const p=priceFor(v,year);
+  if(!p||!(total>0))return null;
+  return{q:Math.round(total/p.price*100)/100,price:p.price,year:p.year,exact:p.exact,partial:p.partial};
+}
 const expTitle=e=>(e.interventi&&e.interventi.length)?e.interventi.join(', '):(e.voce||catOf(e).l);
 
 /* ---------- database ---------- */
@@ -177,14 +203,14 @@ function normalize(o){
 function loadDb(){try{const r=localStorage.getItem(KEY);if(r)return normalize(JSON.parse(r))}catch(e){console.error(e)}return emptyDb()}
 let db=loadDb();
 function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){toast('Errore di salvataggio: spazio esaurito?')}}
-let ui={tab:'dashboard',vid:null,reg:'spese',sortSpese:'dd',sortFuel:'dd'};
+let ui={tab:'dashboard',vid:null,reg:'man',sortSpese:'dd',sortFuel:'dd',sortRegole:'su'};
 function curV(){if(!db.vehicles.find(v=>v.id===ui.vid))ui.vid=db.vehicles.length?db.vehicles[0].id:null;return db.vehicles.find(v=>v.id===ui.vid)}
 function bumpKm(v,km){if(km&&km>v.km){v.km=km;v.kmData=todayISO()}}
 
 /* ---------- calcoli ---------- */
 function consumption(fl){
-  // solo rifornimenti singoli con km: i totali mensili non hanno km e restano esclusi
-  const s=fl.filter(f=>f.tipo!=='mensile'&&f.km>0&&f.quantita>0).sort((a,b)=>a.km-b.km);
+  // solo rifornimenti singoli con quantità reale e km: totali mensili/annuali e quantità stimate restano esclusi
+  const s=fl.filter(f=>(!f.tipo||f.tipo==='singolo')&&!f.stimato&&f.km>0&&f.quantita>0).sort((a,b)=>a.km-b.km);
   const fulls=s.filter(f=>f.pieno);
   if(fulls.length<2)return null;
   const a=fulls[0],b=fulls[fulls.length-1];
@@ -192,6 +218,17 @@ function consumption(fl){
   const q=s.filter(f=>f.km>a.km&&f.km<=b.km).reduce((t,f)=>t+f.quantita,0);
   if(q<=0)return null;
   return{per100:q/dist*100,kmPerUnit:dist/q};
+}
+/* quota di un totale annuale che cade negli ultimi 12 mesi (spesa distribuita uniformemente sul periodo trascorso dell'anno) */
+function annualShare(year,lim){
+  const t=todayISO(),ps=year+'-01-01',pe=(year+'-12-31')<t?(year+'-12-31'):t;
+  if(pe<ps)return 0;
+  const st=ps>lim?ps:lim;
+  if(st>pe)return 0;
+  return (daysBetween(st,pe)+1)/(daysBetween(ps,pe)+1);
+}
+function fuel12(fl,lim){
+  return fl.reduce((t,f)=>t+(f.tipo==='annuale'?(f.totale||0)*annualShare(f.anno,lim):(f.data>=lim?(f.totale||0):0)),0);
 }
 function stats(v){
   const ex=db.expenses.filter(e=>e.vehicleId===v.id),fl=db.fuelLogs.filter(f=>f.vehicleId===v.id);
@@ -205,7 +242,7 @@ function stats(v){
   let perMonth=null;
   if(dates.length){const months=Math.max(1,daysBetween(dates[0],todayISO())/30.44);perMonth=total/months}
   const lim=toISO(new Date(Date.now()-365*86400000));
-  const last12=ex.filter(e=>e.data>=lim&&!(hasAcq&&catOf(e).g==='acquisto')).reduce((t,e)=>t+(e.costo||0),0)+fl.filter(f=>f.data>=lim).reduce((t,f)=>t+(f.totale||0),0)+ap.filter(p=>p.d&&p.d>=lim).reduce((t,p)=>t+p.amt,0);
+  const last12=ex.filter(e=>e.data>=lim&&!(hasAcq&&catOf(e).g==='acquisto')).reduce((t,e)=>t+(e.costo||0),0)+fuel12(fl,lim)+ap.filter(p=>p.d&&p.d>=lim).reduce((t,p)=>t+p.amt,0);
   const kms=ex.map(e=>e.km).concat(fl.map(f=>f.km)).filter(k=>k>0);
   let perKm=null;
   if(kms.length){const d=v.km-Math.min.apply(null,kms);if(d>0)perKm=total/d}
@@ -249,7 +286,7 @@ function ruleStatus(r,v){
   let st='ok';
   if((remKm!==null&&remKm<=0)||(remDays!==null&&remDays<=0))st='late';
   else if(pct>=85||(remKm!==null&&remKm<=1000)||(remDays!==null&&remDays<=30))st='warn';
-  return{remKm,remDays,nextDate,st,pct:Math.max(0,Math.min(100,pct))};
+  return{remKm,remDays,nextDate,st,raw:pct,pct:Math.max(0,Math.min(100,pct))};
 }
 function alerts(v){
   const out=[];
@@ -287,6 +324,8 @@ function partsBlock(f){
 }
 function field(f){
   if(f.t==='parts')return partsBlock(f);
+  if(f.t==='hidden')return'<input type="hidden" name="'+f.n+'" value="'+esc(f.v)+'">';
+  if(f.t==='note')return'<div class="note mut small"'+whenAttr(f)+'>'+esc(f.l)+'</div>';
   const v=f.v==null?'':f.v,req=f.req?' required':'',w=f.w===2?' w2':'';
   if(f.t==='checkbox')return'<label class="chk"'+whenAttr(f)+'><input type="checkbox" name="'+f.n+'"'+(f.v?' checked':'')+'> '+esc(f.l)+'</label>';
   let inp;
@@ -319,6 +358,7 @@ function openForm(title,fields,onSubmit,submit){
     if(!form.checkValidity()){form.reportValidity();return}
     const fd=new FormData(form),o={};
     fields.forEach(f=>{
+      if(!f.n)return;
       if(f.t==='checkbox')o[f.n]=fd.has(f.n);
       else if(f.t==='parts')o[f.n]=fd.getAll(f.n);
       else o[f.n]=fd.get(f.n)==null?'':fd.get(f.n);
@@ -402,50 +442,67 @@ function renderGarage(){
 function renderRegistro(){
   if(!db.vehicles.length)return noVeh();
   const v=curV();
-  let h=vehBar(v)+'<div class="seg"><button data-act="regTab" data-v="spese" class="'+(ui.reg==='spese'?'on':'')+'">Spese</button><button data-act="regTab" data-v="fuel" class="'+(ui.reg==='fuel'?'on':'')+'">Carburante</button></div>';
-  if(ui.reg==='spese'){
-    const list=sortList(db.expenses.filter(e=>e.vehicleId===v.id),ui.sortSpese,'data','costo');
-    h+='<button class="btn full" data-act="addExp">+ Nuova spesa</button>';
-    if(!list.length)return h+'<p class="mut center">Nessuna spesa registrata.</p>';
-    h+=sortBar('spese')+'<div class="sumline">'+list.length+' voci · somma elencata '+eur(list.reduce((t,e)=>t+(e.costo||0),0))+'</div>';
+  if(['man','altre','fuel'].indexOf(ui.reg)<0)ui.reg='man';
+  let h=vehBar(v)+'<div class="seg">'+[['man','🔧 Manutenzioni'],['altre','📄 Altre spese'],['fuel','⛽ Carburante']].map(x=>'<button data-act="regTab" data-v="'+x[0]+'" class="'+(ui.reg===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+'</div>';
+  if(ui.reg!=='fuel'){
+    const man=ui.reg==='man';
+    const list=sortList(db.expenses.filter(e=>e.vehicleId===v.id&&((catOf(e).g==='manutenzione')===man)),ui.sortSpese,'data','costo');
+    h+='<div class="sectitle">'+(man?'Manutenzioni':'Altre spese di gestione')+'</div><div class="mut small" style="margin-bottom:10px">'+(man?'Interventi sul veicolo: tagliandi, ricambi, riparazioni.':'Assicurazione, bollo, multe, revisione, acquisto e rate.')+'</div>'
+      +'<button class="btn full" data-act="'+(man?'addMan':'addAltre')+'">'+(man?'+ Nuova manutenzione':'+ Nuova spesa di gestione')+'</button>';
+    if(!list.length)return h+'<p class="mut center">'+(man?'Nessuna manutenzione registrata.':'Nessuna spesa di gestione registrata.')+'</p>';
+    h+=sortBar('spese')+'<div class="sumline">'+list.length+(list.length===1?' voce':' voci')+' · somma elencata '+eur(list.reduce((t,e)=>t+(e.costo||0),0))+'</div>';
+    if(!man&&list.length>1){
+      const byCat={};
+      list.forEach(e=>{const k=catOf(e).l;byCat[k]=(byCat[k]||0)+(e.costo||0)});
+      h+='<div class="tags" style="margin:0 0 10px">'+Object.keys(byCat).map(k=>'<span class="badge">'+esc(k)+': '+eur(byCat[k])+'</span>').join('')+'</div>';
+    }
     h+=list.map(e=>{
-      const c=catOf(e),man=e.interventi&&e.interventi.length;
+      const c=catOf(e),hasI=e.interventi&&e.interventi.length;
       return'<div class="card"><div class="row"><div><b>'+esc(expTitle(e))+'</b><div class="mut small">'+esc(c.l)+' · '+fdate(e.data)+(e.km?' · '+num(e.km,0)+' km':'')+'</div></div><b class="amt">'+eur(e.costo)+'</b></div>'
-        +(man&&e.voce?'<div class="small">'+esc(e.voce)+'</div>':'')
+        +(hasI&&e.voce?'<div class="small">'+esc(e.voce)+'</div>':'')
         +((c.g==='acquisto'&&v.acquisto&&v.acquisto.modo)?'<div class="mut small">Già inclusa nel costo d\'acquisto del veicolo: non viene sommata due volte nei totali.</div>':'')
         +((e.officina||e.fattura)?'<div class="mut small">'+(e.officina?'🔧 '+esc(e.officina)+' ':'')+(e.fattura?'🧾 '+esc(e.fattura):'')+'</div>':'')
         +(e.scadenza?'<div class="small">Prossima scadenza: <b>'+fdate(e.scadenza)+'</b></div>':'')
         +(e.note?'<div class="mut small">'+esc(e.note)+'</div>':'')
         +'<div class="row end"><button class="lnk" data-act="editExp" data-id="'+e.id+'">Modifica</button><button class="lnk bad" data-act="delExp" data-id="'+e.id+'">Elimina</button></div></div>';
     }).join('');
-  }else{
-    const list=sortList(db.fuelLogs.filter(f=>f.vehicleId===v.id),ui.sortFuel,'data','totale');
-    const s=consumption(list),u=unitOf(v);
-    h+='<button class="btn full" data-act="addFuel">+ Nuova spesa carburante</button>';
-    if(s)h+='<div class="card"><b>Consumo medio reale: '+num(s.per100)+' '+u+'/100 km</b>'+(v.alimentazione!=='Elettrica'?' <span class="mut">('+num(s.kmPerUnit)+' km/'+u+')</span>':'')+'<div class="mut small">Calcolato da pieno a pieno sui rifornimenti singoli.</div></div>';
-    else h+='<div class="card mut small">Servono almeno due rifornimenti singoli con "pieno" per calcolare il consumo medio. I totali mensili contano nei costi ma non nei consumi.</div>';
-    if(list.length)h+=sortBar('fuel')+'<div class="sumline">'+list.length+' voci · totale '+eur(list.reduce((t,f)=>t+(f.totale||0),0))+'</div>';
-    h+=list.map(f=>{
-      const m=f.tipo==='mensile';
-      const title=m?'Totale mensile · '+fmonth(f.mese||f.data.slice(0,7)):num(f.quantita,2)+' '+u;
-      const badge=m?'<span class="badge">mensile</span>':(f.pieno?'<span class="badge">pieno</span>':'');
-      const sub=m?(f.quantita>0?num(f.quantita,2)+' '+u+' complessivi':'importo complessivo del mese'):fdate(f.data)+' · '+num(f.km,0)+' km'+(f.quantita>0?' · '+eur(f.totale/f.quantita)+'/'+u:'');
-      return'<div class="card"><div class="row"><div><b>'+esc(title)+'</b> '+badge+'<div class="mut small">'+esc(sub)+'</div></div><b class="amt">'+eur(f.totale)+'</b></div>'
-        +'<div class="row end"><button class="lnk" data-act="editFuel" data-id="'+f.id+'">Modifica</button><button class="lnk bad" data-act="delFuel" data-id="'+f.id+'">Elimina</button></div></div>';
-    }).join('');
+    return h;
   }
+  const raw=db.fuelLogs.filter(f=>f.vehicleId===v.id),list=sortList(raw,ui.sortFuel,'data','totale');
+  const s=consumption(raw),u=unitOf(v);
+  h+='<div class="sectitle">Carburante</div><div class="mut small" style="margin-bottom:10px">Rifornimenti singoli, totali mensili o annuali.</div><button class="btn full" data-act="addFuel">+ Nuova spesa carburante</button>';
+  if(s)h+='<div class="card"><b>Consumo medio reale: '+num(s.per100)+' '+u+'/100 km</b>'+(v.alimentazione!=='Elettrica'?' <span class="mut">('+num(s.kmPerUnit)+' km/'+u+')</span>':'')+'<div class="mut small">Calcolato da pieno a pieno sui rifornimenti singoli con quantità reale (le quantità stimate non contano).</div></div>';
+  else h+='<div class="card mut small">Servono almeno due rifornimenti singoli con "pieno" e quantità reale per calcolare il consumo medio. I totali mensili/annuali e le quantità stimate contano nei costi ma non nei consumi.</div>';
+  if(list.length)h+=sortBar('fuel')+'<div class="sumline">'+list.length+(list.length===1?' voce':' voci')+' · totale '+eur(list.reduce((t,f)=>t+(f.totale||0),0))+'</div>';
+  h+=list.map(f=>{
+    const tp=f.tipo||'singolo',m=tp==='mensile',a=tp==='annuale',est=!!f.stimato;
+    const title=a?'Totale annuale · '+f.anno:m?'Totale mensile · '+fmonth(f.mese||f.data.slice(0,7)):(est?'≈ ':'')+num(f.quantita,2)+' '+u;
+    const badge=(a?'<span class="badge">annuale</span>':m?'<span class="badge">mensile</span>':(f.pieno?'<span class="badge">pieno</span>':''))+(est?' <span class="badge">stimato</span>':'');
+    const estTxt=est?'stima dal prezzo medio nazionale '+f.annoStima+(f.annoStima===PREZZI_PARZIALE?' (anno parziale)':'')+': '+num(f.prezzoStima,4)+' €/'+u:'';
+    let sub;
+    if(a||m)sub=f.quantita>0?(est?'≈ ':'')+num(f.quantita,2)+' '+u+(est?' · '+estTxt:' complessivi'):'importo complessivo '+(a?'dell\'anno':'del mese');
+    else sub=fdate(f.data)+' · '+num(f.km,0)+' km'+(est?' · '+estTxt:(f.quantita>0?' · '+eur(f.totale/f.quantita)+'/'+u:''));
+    return'<div class="card"><div class="row"><div><b>'+esc(title)+'</b> '+badge+'<div class="mut small">'+esc(sub)+'</div></div><b class="amt">'+eur(f.totale)+'</b></div>'
+      +'<div class="row end"><button class="lnk" data-act="editFuel" data-id="'+f.id+'">Modifica</button><button class="lnk bad" data-act="delFuel" data-id="'+f.id+'">Elimina</button></div></div>';
+  }).join('');
   return h;
 }
 
+function ruleSortBar(){
+  return'<div class="sortlbl">Ordina per scadenza</div><div class="seg sm">'+[['su','↑ Crescente · più vicine'],['sl','↓ Decrescente · più lontane']].map(x=>'<button data-act="sortRule" data-v="'+x[0]+'" class="'+(ui.sortRegole===x[0]?'on':'')+'">'+x[1]+'</button>').join('')+'</div><div class="sumline">In base ai km o ai giorni mancanti: conta il più urgente.</div>';
+}
 function renderPiano(){
   if(!db.vehicles.length)return noVeh();
-  const v=curV(),rules=db.rules.filter(r=>r.vehicleId===v.id);
+  const v=curV();
+  const items=db.rules.filter(r=>r.vehicleId===v.id).map(r=>({r:r,s:ruleStatus(r,v)}));
+  items.sort((a,b)=>{const d=b.s.raw-a.s.raw;return(ui.sortRegole==='sl'?-d:d)||a.r.nome.localeCompare(b.r.nome)});
   let h=vehBar(v)+'<div class="mut small">Km attuali: <b>'+num(v.km,0)+'</b> (agg. '+fdate(v.kmData)+') <button class="lnk" data-act="kmUpdate" data-id="'+v.id+'">aggiorna</button></div>'
     +'<div class="row gap" style="margin-bottom:12px"><button class="btn" data-act="addRule">+ Regola</button><button class="btn ghost" data-act="presets">Regole suggerite</button></div>';
-  if(!rules.length)return h+'<p class="mut center">Nessuna regola di manutenzione definita.</p>';
+  if(!items.length)return h+'<p class="mut center">Nessuna regola di manutenzione definita.</p>';
+  if(items.length>1)h+=ruleSortBar();
   const lab={ok:'OK',warn:'In scadenza',late:'Scaduto'};
-  h+=rules.map(r=>{
-    const s=ruleStatus(r,v),p=[];
+  h+=items.map(it=>{
+    const r=it.r,s=it.s,p=[];
     if(s.remKm!==null)p.push(s.remKm>=0?'mancano '+num(s.remKm,0)+' km':'superato di '+num(-s.remKm,0)+' km');
     if(s.remDays!==null)p.push(s.remDays>=0?s.remDays+' giorni ('+fdate(s.nextDate)+')':'scaduto da '+(-s.remDays)+' giorni');
     return'<div class="card"><div class="row"><b>'+esc(r.nome)+'</b><span class="pill '+s.st+'">'+lab[s.st]+'</span></div><div class="bar"><i class="'+s.st+'" style="width:'+s.pct+'%"></i></div>'
@@ -464,8 +521,8 @@ function renderBackup(){
   if(db.vehicles.length){
     const v=curV();
     h+='<section class="card"><h3>Report per rivendita</h3><p class="mut small">Storico manutenzioni del veicolo selezionato.</p>'+vehBar(v)
-      +'<div class="row gap"><button class="btn" data-act="printReport">🖨 Anteprima / Stampa</button><button class="btn ghost" data-act="savePdf">⬇ Scarica PDF</button><button class="btn ghost" data-act="exportCsv">Esporta CSV</button></div>'
-      +'<p class="mut small">L\'anteprima si apre dentro l\'app, con il tasto "Torna indietro". Se la stampa non parte sul tuo dispositivo, usa "Scarica PDF".</p></section>';
+      +'<div class="row gap"><button class="btn" data-act="printReport">🖨 Stampa / PDF</button><button class="btn ghost" data-act="exportCsv">Esporta CSV</button></div>'
+      +'<p class="mut small">"Stampa / PDF" apre la stampa del dispositivo: scegli una stampante oppure "Salva come PDF". Con "Torna indietro" rientri nell\'app.</p></section>';
   }
   h+='<section class="card"><h3>Zona pericolosa</h3><button class="btn danger" data-act="resetAll">Cancella tutti i dati</button></section>';
   return h;
@@ -514,13 +571,38 @@ function kmForm(id){
     v.km=N(o.km)||0;v.kmData=o.kmData||todayISO();save();render();toast('Km aggiornati');
   });
 }
-function expenseForm(id){
+/* ---- collegamento manutenzione -> regole ---- */
+function norm(s){return String(s||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9 ]+/g,' ').replace(/\s+/g,' ').trim()}
+const PART_KEYS={'olio':['olio'],'candela':['candel'],'cinghia':['cinghia'],'filtro aria':['filtro aria','filtro dell aria','filtro d aria'],'pastiglie posteriori':['pastiglie post','freni post'],'pastiglie anteriori':['pastiglie ant','freni ant'],'rulli centrifuga':['rulli'],'batteria':['batteria']};
+function ruleMatchesPart(rule,part){
+  const n=norm(rule.nome),p=norm(part);
+  if(!n||!p)return false;
+  if((PART_KEYS[p]||[p]).some(k=>n.indexOf(k)>=0))return true;
+  if((p==='pastiglie posteriori'||p==='pastiglie anteriori')&&n.indexOf('pastiglie')>=0&&!/(ant|post)/.test(n))return true;
+  return p.length>=4&&n.length>=4&&p.indexOf(n)>=0;
+}
+/* azzera le regole corrispondenti agli interventi registrati; una regola non viene mai riportata indietro nel tempo */
+function applyMaintenanceToRules(v,e){
+  const out=[];
+  if(!e.interventi||!e.interventi.length||!e.data)return out;
+  db.rules.filter(r=>r.vehicleId===v.id).forEach(r=>{
+    if(!e.interventi.some(p=>ruleMatchesPart(r,p)))return;
+    if(r.ultimaData&&e.data<r.ultimaData)return;
+    r.ultimaData=e.data;
+    const km=e.km>0?e.km:(e.data===todayISO()?v.km:null);
+    if(km!=null)r.ultimoKm=km;
+    out.push(r.nome+(r.ogniKm&&km==null?' (km non indicati: contatore km invariato)':''));
+  });
+  return out;
+}
+function expenseForm(id,mode){
   const v=curV();
-  const e=id?db.expenses.find(x=>x.id===id):{categoria:'manutenzione',data:todayISO(),km:v.km,interventi:[]};
-  const opts=Object.keys(CATS).filter(k=>!CATS[k].legacy||k===e.categoria).map(k=>[k,CATS[k].l]);
+  const e=id?db.expenses.find(x=>x.id===id):{categoria:mode==='altre'?'assicurazione':'manutenzione',data:todayISO(),km:v.km,interventi:[]};
+  const man=catOf(e).g==='manutenzione';
+  const opts=Object.keys(CATS).filter(k=>(CATS[k].g==='manutenzione')===man&&(!CATS[k].legacy||k===e.categoria)).map(k=>[k,CATS[k].l]);
   const MAN=['categoria','manutenzione'],SC=['categoria',SCAD_CATS];
-  openForm(id?'Modifica spesa':'Nuova spesa',[
-    {n:'categoria',l:'Categoria',t:'select',opts:opts,v:e.categoria,w:2},
+  openForm(id?(man?'Modifica manutenzione':'Modifica spesa'):(man?'Nuova manutenzione':'Nuova spesa di gestione'),[
+    man?{n:'categoria',t:'hidden',v:'manutenzione'}:{n:'categoria',l:'Categoria',t:'select',opts:opts,v:e.categoria,w:2},
     {n:'parts',t:'parts',v:e.interventi||[],when:MAN},
     {n:'voce',l:'Descrizione (opzionale)',v:e.voce,w:2},
     {n:'data',l:'Data',t:'date',req:1,v:e.data},{n:'costo',l:'Costo (€)',t:'number',req:1,v:e.costo},
@@ -535,7 +617,9 @@ function expenseForm(id){
     const rec={vehicleId:v.id,categoria:cat,interventi:parts,voce:o.voce.trim(),data:o.data,costo:N(o.costo)||0,km:N(o.km),officina:o.officina.trim(),fattura:o.fattura.trim(),scadenza:o.scadenza||null,ripeti:N(o.ripeti),note:o.note.trim()};
     if(CATS[cat].g==='fissa'&&!rec.scadenza&&rec.ripeti)rec.scadenza=addMonths(rec.data,rec.ripeti);
     if(id)Object.assign(e,rec);else{rec.id=uid();db.expenses.push(rec)}
-    bumpKm(v,rec.km);save();render();toast('Spesa salvata');
+    const upd=cat==='manutenzione'?applyMaintenanceToRules(v,rec):[];
+    bumpKm(v,rec.km);save();render();
+    toast(upd.length?'Salvata · regole azzerate: '+upd.join(', '):'Spesa salvata');
   });
   const mf=$('#mf');
   mf.elements.categoria.addEventListener('change',()=>{
@@ -544,26 +628,41 @@ function expenseForm(id){
   });
 }
 function fuelForm(id){
-  const v=curV(),u=unitOf(v);
+  const v=curV(),u=unitOf(v),cy=new Date().getFullYear();
   const f=id?db.fuelLogs.find(x=>x.id===id):{tipo:'singolo',data:todayISO(),km:v.km,pieno:true};
-  const S=['tipo','singolo'],M=['tipo','mensile'];
+  const S=['tipo','singolo'],M=['tipo','mensile'],Y=['tipo','annuale'];
   openForm(id?'Modifica carburante':'Nuova spesa carburante',[
-    {n:'tipo',l:'Tipo di registrazione',t:'select',opts:[['singolo','Singolo rifornimento'],['mensile','Spesa totale mensile']],v:f.tipo||'singolo',w:2},
+    {n:'tipo',l:'Tipo di registrazione',t:'select',opts:[['singolo','Singolo rifornimento'],['mensile','Spesa totale mensile'],['annuale','Spesa totale annuale']],v:f.tipo||'singolo',w:2},
     {n:'data',l:'Data',t:'date',req:1,v:f.data,when:S},{n:'km',l:'Km al rifornimento',t:'number',req:1,v:f.km,when:S},
     {n:'mese',l:'Mese di riferimento',t:'month',req:1,v:f.mese||todayISO().slice(0,7),when:M,w:2},
-    {n:'quantita',l:'Quantità ('+u+')',t:'number',v:f.quantita},{n:'totale',l:'Spesa totale (€)',t:'number',req:1,v:f.totale},
+    {n:'anno',l:'Anno di riferimento',t:'number',step:1,req:1,v:f.anno||cy,when:Y,w:2},
+    {n:'quantita',l:'Quantità ('+u+') · facoltativa',t:'number',v:f.stimato?'':f.quantita},{n:'totale',l:'Spesa totale (€)',t:'number',req:1,v:f.totale},
+    {n:'qnote',t:'note',l:'Se lasci vuota la quantità, la stimo dal prezzo medio nazionale dell’anno della spesa.'},
     {n:'pieno',l:'Pieno completo',t:'checkbox',v:f.pieno,when:S}
   ],o=>{
     const rec={vehicleId:v.id,tipo:o.tipo,quantita:N(o.quantita)||0,totale:N(o.totale)||0};
+    let year;
     if(o.tipo==='singolo'){
-      if(!rec.quantita){toast('Inserisci la quantità rifornita');return false}
-      rec.data=o.data;rec.mese=null;rec.km=N(o.km)||0;rec.pieno=!!o.pieno;
+      rec.data=o.data;rec.mese=null;rec.anno=null;rec.km=N(o.km)||0;rec.pieno=!!o.pieno;year=Number(o.data.slice(0,4));
+    }else if(o.tipo==='mensile'){
+      rec.mese=o.mese;rec.data=o.mese+'-01';rec.anno=null;rec.km=null;rec.pieno=false;year=Number(o.mese.slice(0,4));
     }else{
-      rec.mese=o.mese;rec.data=o.mese+'-01';rec.km=null;rec.pieno=false;
+      const a=N(o.anno);
+      if(!a||a<1990||a>cy||Math.floor(a)!==a){toast('Indica un anno valido (dal 1990 al '+cy+')');return false}
+      rec.anno=a;rec.mese=null;rec.data=a+'-01-01';rec.km=null;rec.pieno=false;year=a;
+    }
+    const dup=db.fuelLogs.some(x=>x.vehicleId===v.id&&x.id!==id&&(x.data||'').slice(0,4)===String(year)&&(rec.tipo==='annuale'||x.tipo==='annuale'));
+    if(dup&&!confirm('Nel '+year+' c’è già un totale annuale o altri rifornimenti: i costi si sommano. Continuare?'))return false;
+    rec.stimato=false;rec.prezzoStima=null;rec.annoStima=null;
+    let est=null;
+    if(!rec.quantita){
+      est=estimateQty(v,rec.totale,year);
+      if(est){rec.quantita=est.q;rec.stimato=true;rec.prezzoStima=est.price;rec.annoStima=est.year}
     }
     if(id)Object.assign(f,rec);else{rec.id=uid();db.fuelLogs.push(rec)}
     if(rec.tipo==='singolo')bumpKm(v,rec.km);
-    save();render();toast('Carburante salvato');
+    save();render();
+    toast(est?'Salvato · stimati ≈ '+num(est.q,2)+' '+u+' (prezzo medio '+est.year+': '+num(est.price,4)+' €/'+u+')':'Carburante salvato');
   });
 }
 function ruleForm(id){
@@ -648,9 +747,10 @@ let pvOpen=false;
 function openPrintView(){
   const v=curV();if(!v)return;
   const pv=$('#printView');
-  pv.innerHTML='<div class="pv-bar"><button class="btn" data-act="closePrint">← Torna indietro</button><button class="btn" data-act="doPrint">🖨 Stampa</button><button class="btn" data-act="savePdf">⬇ Scarica PDF</button><small>Se la stampa non parte su questo dispositivo, usa Scarica PDF.</small></div><div class="pv-body">'+reportBody(v)+'</div>';
+  pv.innerHTML='<div class="pv-bar"><button class="btn" data-act="closePrint">← Torna indietro</button><button class="btn" data-act="doPrint">🖨 Stampa / PDF</button><small>Si apre la stampa del dispositivo: per ottenere il file scegli "Salva come PDF".</small></div><div class="pv-body">'+reportBody(v)+'</div>';
   pv.classList.add('on');document.body.classList.add('pv-open');pv.scrollTop=0;pvOpen=true;
   try{history.pushState({pv:1},'')}catch(e){}
+  doPrint();
 }
 function hidePrintView(){pvOpen=false;const pv=$('#printView');pv.classList.remove('on');document.body.classList.remove('pv-open');pv.innerHTML=''}
 function closePrintView(){
@@ -659,8 +759,9 @@ function closePrintView(){
   try{if(history.state&&history.state.pv)history.back()}catch(e){}
 }
 function doPrint(){
-  if(typeof window.print!=='function'){toast('Stampa non supportata qui: usa Scarica PDF');return}
-  try{window.print()}catch(e){toast('Stampa non disponibile: usa Scarica PDF')}
+  // un solo comando: apre la stampa nativa (stampante o "Salva come PDF"); se il browser non la supporta, scarica il PDF
+  if(typeof window.print!=='function'){toast('Stampa non supportata qui: scarico il PDF');savePdf();return}
+  try{window.print()}catch(e){toast('Stampa non disponibile: scarico il PDF');savePdf()}
 }
 
 /* generatore PDF minimale (Helvetica, A4, solo testo): funziona anche dove window.print non esiste */
@@ -763,7 +864,7 @@ const A={
   delVehicle:d=>{const v=db.vehicles.find(x=>x.id===d.id);if(!confirm('Eliminare '+vname(v)+' e tutto il suo storico?'))return;
     db.vehicles=db.vehicles.filter(x=>x.id!==d.id);['expenses','fuelLogs','rules'].forEach(k=>{db[k]=db[k].filter(x=>x.vehicleId!==d.id)});save();render();toast('Veicolo eliminato')},
   regTab:d=>{ui.reg=d.v;render()},
-  addExp:()=>expenseForm(),editExp:d=>expenseForm(d.id),
+  addMan:()=>expenseForm(null,'man'),addAltre:()=>expenseForm(null,'altre'),editExp:d=>expenseForm(d.id),
   delExp:d=>{if(confirm('Eliminare questa spesa?')){db.expenses=db.expenses.filter(x=>x.id!==d.id);save();render()}},
   addFuel:()=>fuelForm(),editFuel:d=>fuelForm(d.id),
   delFuel:d=>{if(confirm('Eliminare questa voce di carburante?')){db.fuelLogs=db.fuelLogs.filter(x=>x.id!==d.id);save();render()}},
@@ -784,6 +885,7 @@ const A={
   importJson:()=>{$('#fileIn').value='';$('#fileIn').click()},
   exportCsv:exportCsv,printReport:openPrintView,closePrint:closePrintView,doPrint:doPrint,savePdf:savePdf,
   sortSet:d=>{if(d.w==='fuel')ui.sortFuel=d.v;else ui.sortSpese=d.v;render()},
+  sortRule:d=>{ui.sortRegole=d.v;render()},
   resetAll:()=>{if(confirm('Cancellare TUTTI i dati? Questa azione non si può annullare.\n\nHai scaricato un backup?')){db=emptyDb();ui.vid=null;save();render();toast('Dati cancellati')}}
 };
 document.addEventListener('click',e=>{
