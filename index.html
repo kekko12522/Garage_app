@@ -85,18 +85,6 @@ select,input,textarea{width:100%;font:inherit;color:var(--tx);background:var(--b
 .sortlbl{font-size:.78rem;color:var(--mut);margin:0 0 4px}
 .sumline{font-size:.85rem;color:var(--mut);margin:0 0 8px}
 .sectitle{font-weight:700;font-size:1.1rem;margin:2px 0}
-#printView{position:fixed;inset:0;background:#fff;color:#111;z-index:40;overflow:auto;display:none;-webkit-overflow-scrolling:touch}
-#printView.on{display:block}
-.pv-bar{position:sticky;top:0;z-index:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:calc(10px + env(safe-area-inset-top)) 12px 10px;background:#0f766e}
-.pv-bar .btn{background:#fff;color:#0f766e;padding:9px 14px}
-.pv-bar small{color:#d7f3ef;flex-basis:100%}
-.pv-body{max-width:900px;margin:0 auto;padding:16px 16px 40px;font-size:14px;line-height:1.4}
-.pv-body h1{font-size:1.4rem;margin:0 0 4px}
-.pv-body h2{font-size:1.05rem;margin:20px 0 6px}
-.pv-body table{width:100%;border-collapse:collapse;font-size:12px}
-.pv-body th,.pv-body td{border:1px solid #999;padding:5px 7px;text-align:left;vertical-align:top}
-.pv-body th{background:#eee}
-@media print{body.pv-open{padding:0;background:#fff}body.pv-open>*:not(#printView){display:none!important}body.pv-open #printView{position:static;display:block;overflow:visible}.pv-bar{display:none}.pv-body{max-width:none;padding:0}}
 </style>
 </head>
 <body>
@@ -105,11 +93,10 @@ select,input,textarea{width:100%;font:inherit;color:var(--tx);background:var(--b
 <nav class="bottom" id="nav"></nav>
 <div id="modal" class="modal hidden"></div>
 <div id="toast"></div>
-<div id="printView"></div>
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 <script>
 'use strict';
-const VERSION='0.4.0';
+const VERSION='0.4.1';
 const KEY='garageManager.db';
 const TIPI=['Auto','Moto','Scooter','Furgone','Altro'];
 const ICON={Auto:'🚗',Moto:'🏍️',Scooter:'🛵',Furgone:'🚐',Altro:'🚙'};
@@ -522,7 +509,7 @@ function renderBackup(){
     const v=curV();
     h+='<section class="card"><h3>Report per rivendita</h3><p class="mut small">Storico manutenzioni del veicolo selezionato.</p>'+vehBar(v)
       +'<div class="row gap"><button class="btn" data-act="printReport">🖨 Stampa / PDF</button><button class="btn ghost" data-act="exportCsv">Esporta CSV</button></div>'
-      +'<p class="mut small">"Stampa / PDF" apre la stampa del dispositivo: scegli una stampante oppure "Salva come PDF". Con "Torna indietro" rientri nell\'app.</p></section>';
+      +'<p class="mut small">"Stampa / PDF" apre il report in PDF in una nuova scheda: da lì stampi o lo salvi con i comandi del dispositivo. Per tornare all\'app chiudi la scheda del PDF.</p></section>';
   }
   h+='<section class="card"><h3>Zona pericolosa</h3><button class="btn danger" data-act="resetAll">Cancella tutti i dati</button></section>';
   return h;
@@ -729,42 +716,7 @@ function reportData(v){
   const list=db.expenses.filter(e=>e.vehicleId===v.id&&catOf(e).g==='manutenzione').sort((a,b)=>(a.data||'').localeCompare(b.data||''));
   return{list:list,s:stats(v),ai:acquistoInfo(v),as:acquistoSummary(v)};
 }
-function reportBody(v){
-  const r=reportData(v);
-  let h='<h1>'+esc(vname(v))+(v.allestimento?' '+esc(v.allestimento):'')+'</h1>'
-    +'<p>Targa: '+esc(v.targa||'—')+(v.vin?' · VIN: '+esc(v.vin):'')+' · Anno: '+(v.anno||'—')+' · '+esc(v.alimentazione)+' · '+num(v.km,0)+' km (agg. '+fdate(v.kmData)+')</p>';
-  if(r.ai)h+='<p>'+esc(r.ai.txt)+(r.as?'<br>Pagato finora: <b>'+eur(r.as.tot)+'</b>':'')+'</p>';
-  h+='<h2>Riepilogo costi sostenuti</h2><table>'+GROUPS.map(g=>'<tr><td>'+g[1]+'</td><td style="text-align:right">'+eur(r.s.by[g[0]])+'</td></tr>').join('')+'<tr><th>Totale</th><th style="text-align:right">'+eur(r.s.total)+'</th></tr></table>';
-  h+='<h2>Storico manutenzioni</h2>';
-  if(!r.list.length)return h+'<p>Nessun intervento registrato.</p><p style="font-size:11px;color:#555">Generato il '+fdate(todayISO())+' con Garage Manager v'+VERSION+'</p>';
-  h+='<table><tr><th>Data</th><th>Interventi</th><th>Km</th><th>Officina</th><th>Fattura</th><th>Costo</th></tr>'
-    +r.list.map(e=>'<tr><td>'+fdate(e.data)+'</td><td>'+esc(expTitle(e))+((e.interventi&&e.interventi.length&&e.voce)?'<br>'+esc(e.voce):'')+'</td><td>'+(e.km?num(e.km,0):'')+'</td><td>'+esc(e.officina)+'</td><td>'+esc(e.fattura)+'</td><td style="text-align:right">'+eur(e.costo)+'</td></tr>').join('')+'</table>'
-    +'<p><b>Totale manutenzione: '+eur(r.list.reduce((t,e)=>t+(e.costo||0),0))+'</b></p>'
-    +'<p style="font-size:11px;color:#555">Generato il '+fdate(todayISO())+' con Garage Manager v'+VERSION+'</p>';
-  return h;
-}
-let pvOpen=false;
-function openPrintView(){
-  const v=curV();if(!v)return;
-  const pv=$('#printView');
-  pv.innerHTML='<div class="pv-bar"><button class="btn" data-act="closePrint">← Torna indietro</button><button class="btn" data-act="doPrint">🖨 Stampa / PDF</button><small>Si apre la stampa del dispositivo: per ottenere il file scegli "Salva come PDF".</small></div><div class="pv-body">'+reportBody(v)+'</div>';
-  pv.classList.add('on');document.body.classList.add('pv-open');pv.scrollTop=0;pvOpen=true;
-  try{history.pushState({pv:1},'')}catch(e){}
-  doPrint();
-}
-function hidePrintView(){pvOpen=false;const pv=$('#printView');pv.classList.remove('on');document.body.classList.remove('pv-open');pv.innerHTML=''}
-function closePrintView(){
-  if(!pvOpen)return;
-  hidePrintView();
-  try{if(history.state&&history.state.pv)history.back()}catch(e){}
-}
-function doPrint(){
-  // un solo comando: apre la stampa nativa (stampante o "Salva come PDF"); se il browser non la supporta, scarica il PDF
-  if(typeof window.print!=='function'){toast('Stampa non supportata qui: scarico il PDF');savePdf();return}
-  try{window.print()}catch(e){toast('Stampa non disponibile: scarico il PDF');savePdf()}
-}
-
-/* generatore PDF minimale (Helvetica, A4, solo testo): funziona anche dove window.print non esiste */
+/* generatore PDF minimale (Helvetica, A4, solo testo): nessuna libreria esterna, funziona offline */
 const HW={' ':278,'!':278,'"':355,'#':556,'$':556,'%':889,'&':667,"'":191,'(':333,')':333,'*':389,'+':584,',':278,'-':333,'.':278,'/':278,':':278,';':278,'<':584,'=':584,'>':584,'?':556,'@':1015,'A':667,'B':667,'C':722,'D':722,'E':667,'F':611,'G':778,'H':722,'I':278,'J':500,'K':667,'L':556,'M':833,'N':722,'O':778,'P':667,'Q':778,'R':722,'S':667,'T':611,'U':722,'V':667,'W':944,'X':667,'Y':667,'Z':611,'[':278,'\\':278,']':278,'^':469,'_':556,'`':333,'a':556,'b':556,'c':500,'d':556,'e':556,'f':278,'g':556,'h':556,'i':222,'j':222,'k':500,'l':222,'m':833,'n':556,'o':556,'p':556,'q':556,'r':333,'s':500,'t':278,'u':556,'v':500,'w':722,'x':500,'y':500,'z':500,'{':334,'|':260,'}':334,'~':584};
 function tw(s,size,bold){let w=0;for(const ch of s)w+=(HW[ch]||556);return w*size/1000*(bold?1.06:1)}
 function pdfStr(s){
@@ -849,10 +801,17 @@ function buildPdf(v){
   for(let i=0;i<out.length;i++)bytes[i]=out.charCodeAt(i)&255;
   return new Blob([bytes],{type:'application/pdf'});
 }
-function savePdf(){
+/* Stampa / PDF: apre il report in PDF in una nuova scheda (poi si stampa o si salva dal visualizzatore del dispositivo).
+   Se il browser blocca la nuova scheda, scarica il file. */
+function printPdf(){
   const v=curV();if(!v)return;
-  try{download(buildPdf(v),'report-'+(v.targa||v.modello).replace(/\s+/g,'_')+'-'+todayISO()+'.pdf');toast('PDF scaricato')}
-  catch(e){console.error(e);toast('Errore nella creazione del PDF')}
+  let blob;
+  try{blob=buildPdf(v)}catch(e){console.error(e);toast('Errore nella creazione del PDF');return}
+  const url=URL.createObjectURL(blob);
+  let w=null;
+  try{w=window.open(url,'_blank')}catch(e){}
+  if(!w){download(blob,'report-'+(v.targa||v.modello).replace(/\s+/g,'_')+'-'+todayISO()+'.pdf');toast('Scheda bloccata dal browser: ho scaricato il PDF, aprilo da lì')}
+  setTimeout(()=>URL.revokeObjectURL(url),120000);
 }
 
 /* ---------- eventi ---------- */
@@ -883,7 +842,7 @@ const A={
     PRESETS.forEach(p=>db.rules.push({id:uid(),vehicleId:v.id,nome:p[0],ogniKm:p[1],ogniMesi:p[2],ultimoKm:v.km,ultimaData:todayISO()}));save();render();toast('Regole aggiunte')},
   exportJson:exportJson,
   importJson:()=>{$('#fileIn').value='';$('#fileIn').click()},
-  exportCsv:exportCsv,printReport:openPrintView,closePrint:closePrintView,doPrint:doPrint,savePdf:savePdf,
+  exportCsv:exportCsv,printReport:printPdf,
   sortSet:d=>{if(d.w==='fuel')ui.sortFuel=d.v;else ui.sortSpese=d.v;render()},
   sortRule:d=>{ui.sortRegole=d.v;render()},
   resetAll:()=>{if(confirm('Cancellare TUTTI i dati? Questa azione non si può annullare.\n\nHai scaricato un backup?')){db=emptyDb();ui.vid=null;save();render();toast('Dati cancellati')}}
@@ -899,10 +858,9 @@ document.addEventListener('change',e=>{
   else if(e.target.id==='fileIn'&&e.target.files[0])importFile(e.target.files[0]);
 });
 document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'){closeModal();closePrintView()}
+  if(e.key==='Escape')closeModal();
   else if(e.key==='Enter'&&e.target.id==='newPart'){e.preventDefault();A.addPart()}
 });
-window.addEventListener('popstate',()=>{if(pvOpen)hidePrintView()});
 /* blocco totale dello zoom (iOS Safari ignora user-scalable=no) */
 ['gesturestart','gesturechange','gestureend'].forEach(t=>document.addEventListener(t,e=>e.preventDefault()));
 document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
