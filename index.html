@@ -96,7 +96,7 @@ select,input,textarea{width:100%;font:inherit;color:var(--tx);background:var(--b
 <input type="file" id="fileIn" accept="application/json,.json" hidden>
 <script>
 'use strict';
-const VERSION='0.4.1';
+const VERSION='0.4.2';
 const KEY='garageManager.db';
 const TIPI=['Auto','Moto','Scooter','Furgone','Altro'];
 const ICON={Auto:'🚗',Moto:'🏍️',Scooter:'🛵',Furgone:'🚐',Altro:'🚙'};
@@ -265,15 +265,33 @@ function acquistoSummary(v){
   const pay=acquistoPayments(v);
   return{pay:pay,tot:pay.reduce((t,p)=>t+p.amt,0),done:pay.filter(p=>p.k==='rata').length,n:a.rate||0,noDate:a.modo==='finanziamento'&&!(a.dataPrimaRata||a.dataAcquisto)};
 }
+/* Ultimo intervento di una regola, calcolato ogni volta: vale il più recente tra
+   - le manutenzioni del registro che corrispondono alla regola (interventi spuntati o collegamento diretto da "Fatto")
+   - lo stato iniziale salvato nella regola (data/km inseriti a mano)
+   Nulla viene sovrascritto: eliminando o modificando una manutenzione la regola si ricalcola da sola. */
+function ruleLast(r,v){
+  const c=[];
+  if(r.ultimaData||r.ultimoKm!=null)c.push({data:r.ultimaData||'',km:r.ultimoKm!=null?r.ultimoKm:null,src:'manuale',id:null});
+  db.expenses.forEach(e=>{
+    if(e.vehicleId!==v.id||catOf(e).g!=='manutenzione'||!e.data)return;
+    const hit=(e.regole&&e.regole.indexOf(r.id)>=0)||(e.interventi&&e.interventi.some(p=>ruleMatchesPart(r,p)));
+    if(hit)c.push({data:e.data,km:e.km>0?e.km:null,src:'registro',id:e.id});
+  });
+  if(!c.length)return{data:null,km:null,src:'manuale',id:null};
+  c.sort((a,b)=>b.data.localeCompare(a.data)||((b.src==='registro')-(a.src==='registro'))||((b.km||0)-(a.km||0)));
+  const w=c[0];
+  return{data:w.data||null,km:w.km,src:w.src,id:w.id};
+}
 function ruleStatus(r,v){
+  const L=ruleLast(r,v);
   let remKm=null,remDays=null,pctKm=0,pctT=0,nextDate=null;
-  if(r.ogniKm){remKm=(r.ultimoKm||0)+r.ogniKm-v.km;pctKm=(v.km-(r.ultimoKm||0))/r.ogniKm*100}
-  if(r.ogniMesi&&r.ultimaData){nextDate=addMonths(r.ultimaData,r.ogniMesi);remDays=daysTo(nextDate);const tot=Math.max(1,daysBetween(r.ultimaData,nextDate));pctT=(tot-remDays)/tot*100}
+  if(r.ogniKm&&L.km!=null){remKm=L.km+r.ogniKm-v.km;pctKm=(v.km-L.km)/r.ogniKm*100}
+  if(r.ogniMesi&&L.data){nextDate=addMonths(L.data,r.ogniMesi);remDays=daysTo(nextDate);const tot=Math.max(1,daysBetween(L.data,nextDate));pctT=(tot-remDays)/tot*100}
   const pct=Math.max(pctKm,pctT);
   let st='ok';
   if((remKm!==null&&remKm<=0)||(remDays!==null&&remDays<=0))st='late';
   else if(pct>=85||(remKm!==null&&remKm<=1000)||(remDays!==null&&remDays<=30))st='warn';
-  return{remKm,remDays,nextDate,st,raw:pct,pct:Math.max(0,Math.min(100,pct))};
+  return{remKm,remDays,nextDate,st,last:L,kmUnknown:!!(r.ogniKm&&L.km==null),raw:pct,pct:Math.max(0,Math.min(100,pct))};
 }
 function alerts(v){
   const out=[];
@@ -494,7 +512,7 @@ function renderPiano(){
     if(s.remDays!==null)p.push(s.remDays>=0?s.remDays+' giorni ('+fdate(s.nextDate)+')':'scaduto da '+(-s.remDays)+' giorni');
     return'<div class="card"><div class="row"><b>'+esc(r.nome)+'</b><span class="pill '+s.st+'">'+lab[s.st]+'</span></div><div class="bar"><i class="'+s.st+'" style="width:'+s.pct+'%"></i></div>'
       +'<div class="small">'+p.join(' · ')+'</div>'
-      +'<div class="mut small">Ogni '+(r.ogniKm?num(r.ogniKm,0)+' km':'')+(r.ogniKm&&r.ogniMesi?' o ':'')+(r.ogniMesi?r.ogniMesi+' mesi':'')+' · ultimo: '+(r.ultimoKm!=null?num(r.ultimoKm,0)+' km ':'')+fdate(r.ultimaData)+'</div>'
+      +'<div class="mut small">Ogni '+(r.ogniKm?num(r.ogniKm,0)+' km':'')+(r.ogniKm&&r.ogniMesi?' o ':'')+(r.ogniMesi?r.ogniMesi+' mesi':'')+' · ultimo intervento: '+(s.last.km!=null?num(s.last.km,0)+' km · ':'')+fdate(s.last.data)+(s.last.src==='registro'?' (dal registro)':'')+'</div>'+(s.kmUnknown?'<div class="small" style="color:var(--warn)">Km dell’ultimo intervento non indicati: il contatore km non si può calcolare.</div>':'')
       +'<div class="row gap"><button class="btn sm" data-act="doneRule" data-id="'+r.id+'">✔ Fatto</button><button class="btn sm ghost" data-act="editRule" data-id="'+r.id+'">Modifica</button><button class="btn sm ghost" data-act="delRule" data-id="'+r.id+'" style="color:var(--bad)">Elimina</button></div></div>';
   }).join('');
   return h;
@@ -568,17 +586,16 @@ function ruleMatchesPart(rule,part){
   if((p==='pastiglie posteriori'||p==='pastiglie anteriori')&&n.indexOf('pastiglie')>=0&&!/(ant|post)/.test(n))return true;
   return p.length>=4&&n.length>=4&&p.indexOf(n)>=0;
 }
-/* azzera le regole corrispondenti agli interventi registrati; una regola non viene mai riportata indietro nel tempo */
-function applyMaintenanceToRules(v,e){
-  const out=[];
-  if(!e.interventi||!e.interventi.length||!e.data)return out;
+/* fotografia dello stato calcolato delle regole: serve a dire all'utente quali regole sono cambiate dopo un salvataggio/eliminazione */
+function ruleSnap(v){
+  const m={};
+  db.rules.filter(r=>r.vehicleId===v.id).forEach(r=>{const L=ruleLast(r,v);m[r.id]=(L.id||'base')+'|'+(L.data||'')+'|'+(L.km==null?'':L.km)});
+  return m;
+}
+function ruleChanges(v,before){
+  const a=ruleSnap(v),out=[];
   db.rules.filter(r=>r.vehicleId===v.id).forEach(r=>{
-    if(!e.interventi.some(p=>ruleMatchesPart(r,p)))return;
-    if(r.ultimaData&&e.data<r.ultimaData)return;
-    r.ultimaData=e.data;
-    const km=e.km>0?e.km:(e.data===todayISO()?v.km:null);
-    if(km!=null)r.ultimoKm=km;
-    out.push(r.nome+(r.ogniKm&&km==null?' (km non indicati: contatore km invariato)':''));
+    if(a[r.id]!==before[r.id])out.push(r.nome+(r.ogniKm&&ruleLast(r,v).km==null?' (km non indicati)':''));
   });
   return out;
 }
@@ -598,15 +615,16 @@ function expenseForm(id,mode){
     {n:'scadenza',l:'Prossima scadenza',t:'date',v:e.scadenza,when:SC},{n:'ripeti',l:'Oppure ripeti ogni (mesi)',t:'number',step:1,v:e.ripeti,when:SC},
     {n:'note',l:'Note',t:'textarea',v:e.note,w:2}
   ],o=>{
+    const before=ruleSnap(v);
     const cat=o.categoria,parts=cat==='manutenzione'?o.parts:[];
     if(cat==='manutenzione'&&!parts.length&&!o.voce.trim()){toast('Seleziona almeno un intervento o scrivi una descrizione');return false}
     parts.forEach(p=>{if(PARTS.indexOf(p)<0&&!db.customParts.some(c=>c.toLowerCase()===p.toLowerCase()))db.customParts.push(p)});
     const rec={vehicleId:v.id,categoria:cat,interventi:parts,voce:o.voce.trim(),data:o.data,costo:N(o.costo)||0,km:N(o.km),officina:o.officina.trim(),fattura:o.fattura.trim(),scadenza:o.scadenza||null,ripeti:N(o.ripeti),note:o.note.trim()};
     if(CATS[cat].g==='fissa'&&!rec.scadenza&&rec.ripeti)rec.scadenza=addMonths(rec.data,rec.ripeti);
     if(id)Object.assign(e,rec);else{rec.id=uid();db.expenses.push(rec)}
-    const upd=cat==='manutenzione'?applyMaintenanceToRules(v,rec):[];
+    const ch=ruleChanges(v,before);
     bumpKm(v,rec.km);save();render();
-    toast(upd.length?'Salvata · regole azzerate: '+upd.join(', '):'Spesa salvata');
+    toast(ch.length?'Salvata · regole ricalcolate: '+ch.join(', '):'Spesa salvata');
   });
   const mf=$('#mf');
   mf.elements.categoria.addEventListener('change',()=>{
@@ -655,11 +673,13 @@ function fuelForm(id){
 function ruleForm(id){
   const v=curV();
   const r=id?db.rules.find(x=>x.id===id):{ultimoKm:v.km,ultimaData:todayISO()};
+  const L=id?ruleLast(r,v):null;
+  const note=(L&&L.src==='registro')?{t:'note',l:'Dal registro risulta l’ultimo intervento del '+fdate(L.data)+(L.km!=null?' ('+num(L.km,0)+' km)':'')+': è più recente dei valori qui sotto, quindi vale quello. Per cambiarlo modifica o elimina quella manutenzione nel registro.'}:null;
   openForm(id?'Modifica regola':'Nuova regola',[
     {n:'nome',l:'Nome intervento',req:1,v:r.nome,w:2},
     {n:'ogniKm',l:'Ogni (km)',t:'number',step:1,v:r.ogniKm},{n:'ogniMesi',l:'Ogni (mesi)',t:'number',step:1,v:r.ogniMesi},
-    {n:'ultimoKm',l:'Km ultimo intervento',t:'number',v:r.ultimoKm},{n:'ultimaData',l:'Data ultimo intervento',t:'date',v:r.ultimaData}
-  ],o=>{
+    {n:'ultimoKm',l:'Km ultimo intervento (iniziale)',t:'number',v:r.ultimoKm},{n:'ultimaData',l:'Data ultimo intervento (iniziale)',t:'date',v:r.ultimaData}
+  ].concat(note?[note]:[]),o=>{
     const rec={vehicleId:v.id,nome:o.nome.trim(),ogniKm:N(o.ogniKm),ogniMesi:N(o.ogniMesi),ultimoKm:N(o.ultimoKm),ultimaData:o.ultimaData||null};
     if(!rec.ogniKm&&!rec.ogniMesi){toast('Indica un intervallo in km o in mesi');return false}
     if(rec.ogniMesi&&!rec.ultimaData)rec.ultimaData=todayISO();
@@ -668,16 +688,17 @@ function ruleForm(id){
     save();render();toast('Regola salvata');
   });
 }
+/* "Fatto": registra la manutenzione nel registro (anche a costo zero) collegata a questa regola; la regola si ricalcola da lì */
 function doneForm(id){
   const v=curV(),r=db.rules.find(x=>x.id===id);
   openForm('Intervento eseguito: '+r.nome,[
     {n:'data',l:'Data',t:'date',req:1,v:todayISO()},{n:'km',l:'Km',t:'number',req:1,v:v.km},
-    {n:'costo',l:'Costo (€, opzionale)',t:'number'},{n:'officina',l:'Officina'}
+    {n:'costo',l:'Costo (€, opzionale)',t:'number'},{n:'officina',l:'Officina'},
+    {t:'note',l:'L’intervento viene salvato nel registro Manutenzioni: se lo elimini o lo modifichi, la regola si aggiorna da sola.'}
   ],o=>{
-    r.ultimaData=o.data;r.ultimoKm=N(o.km)||v.km;bumpKm(v,r.ultimoKm);
-    const c=N(o.costo);
-    if(c>0)db.expenses.push({id:uid(),vehicleId:v.id,categoria:'manutenzione',interventi:[],voce:r.nome,data:o.data,costo:c,km:r.ultimoKm,officina:o.officina.trim(),fattura:'',scadenza:null,ripeti:null,note:''});
-    save();render();toast('Intervento registrato');
+    const km=N(o.km)||v.km;
+    db.expenses.push({id:uid(),vehicleId:v.id,categoria:'manutenzione',interventi:[],regole:[r.id],voce:r.nome,data:o.data,costo:N(o.costo)||0,km:km,officina:o.officina.trim(),fattura:'',scadenza:null,ripeti:null,note:''});
+    bumpKm(v,km);save();render();toast('Intervento registrato nel registro');
   });
 }
 
@@ -824,7 +845,14 @@ const A={
     db.vehicles=db.vehicles.filter(x=>x.id!==d.id);['expenses','fuelLogs','rules'].forEach(k=>{db[k]=db[k].filter(x=>x.vehicleId!==d.id)});save();render();toast('Veicolo eliminato')},
   regTab:d=>{ui.reg=d.v;render()},
   addMan:()=>expenseForm(null,'man'),addAltre:()=>expenseForm(null,'altre'),editExp:d=>expenseForm(d.id),
-  delExp:d=>{if(confirm('Eliminare questa spesa?')){db.expenses=db.expenses.filter(x=>x.id!==d.id);save();render()}},
+  delExp:d=>{
+    if(!confirm('Eliminare questa spesa?'))return;
+    const v=curV(),before=v?ruleSnap(v):{};
+    db.expenses=db.expenses.filter(x=>x.id!==d.id);
+    const ch=v?ruleChanges(v,before):[];
+    save();render();
+    toast(ch.length?'Eliminata · regole ripristinate: '+ch.join(', '):'Spesa eliminata');
+  },
   addFuel:()=>fuelForm(),editFuel:d=>fuelForm(d.id),
   delFuel:d=>{if(confirm('Eliminare questa voce di carburante?')){db.fuelLogs=db.fuelLogs.filter(x=>x.id!==d.id);save();render()}},
   addPart:()=>{
